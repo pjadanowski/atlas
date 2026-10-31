@@ -1,6 +1,8 @@
 # Changelog
 
-## Unreleased — first public release
+## 0.1.0 — 2026-10-31
+
+First public release.
 
 ### Added
 - OpenAPI 3.1 support: type unions and nullable `$ref`s (as emitted by
