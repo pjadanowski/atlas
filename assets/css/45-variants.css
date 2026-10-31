@@ -362,3 +362,10 @@ h1.is-deprecated {
   padding-left: 18px;
   color: var(--text-secondary);
 }
+
+/* XSD abstract types: which derived types to send */
+.attr-abstract {
+  margin: 6px 0 0;
+  font-size: 13px;
+  color: var(--text-secondary);
+}

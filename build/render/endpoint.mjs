@@ -24,13 +24,19 @@ ${pagerSection(model, endpoint)}
 function endpointHeader(endpoint, model) {
   const tag = model.tags.find((candidate) => candidate.name === endpoint.tagName);
   const tagCrumb = tag?.description ? `<a href="${esc(url(tag.href))}">${esc(endpoint.tag)}</a>` : `<span>${esc(endpoint.tag)}</span>`;
-  const route = endpoint.kind === 'webhook'
+  const route = endpoint.soap
     ? `<div class="endpoint-route">
-    ${methodBadge(endpoint.method)}
+    ${methodBadge('SOAP')}
+    <code class="endpoint-path">${esc(endpoint.soap.address || endpoint.soap.operation)}</code>
+    ${endpoint.soap.address ? copyButton(endpoint.soap.address, 'Copy endpoint address') : ''}
+  </div>`
+    : endpoint.kind === 'webhook'
+    ? `<div class="endpoint-route">
+    ${methodBadge(endpoint.badge ?? endpoint.method)}
     <span class="endpoint-path endpoint-path--webhook">Webhook · sent by the API to your endpoint</span>
   </div>`
     : `<div class="endpoint-route">
-    ${methodBadge(endpoint.method)}
+    ${methodBadge(endpoint.badge ?? endpoint.method)}
     <code class="endpoint-path">${esc(endpoint.path)}</code>
     ${copyButton(endpoint.path, 'Copy path')}
   </div>`;
@@ -52,6 +58,7 @@ function endpointHeader(endpoint, model) {
 
 function metaStrip(endpoint) {
   const items = [];
+  if (endpoint.soap) return soapMeta(endpoint);
   if (endpoint.kind !== 'webhook') items.push(securityItem(endpoint));
   if (endpoint.requestBody) {
     items.push(
@@ -86,6 +93,28 @@ function securityItem(endpoint) {
     ? `<span class="meta-scopes">${scopes.map((scope) => `<code class="scope-pill">${esc(scope)}</code>`).join('')}</span>`
     : '';
   return metaItem(lockIcon(), `${label}${scopeHtml}`, sub);
+}
+
+/** SOAP operations: protocol, binding style, action and the other ports. */
+function soapMeta(endpoint) {
+  const soap = endpoint.soap;
+  const versions = [soap.version, ...soap.alternatives.map((alternative) => alternative.version)];
+  const items = [
+    metaItem(fileIcon(), `SOAP ${[...new Set(versions)].join(' · ')}`, `${esc(soap.style)}/literal · ${esc(soap.port)}`),
+    metaItem(
+      globeIcon(),
+      soap.action ? `<code>${esc(soap.action)}</code>` : '<span class="meta-or">none</span>',
+      soap.version === '1.1' ? 'SOAPAction header' : '<code>action</code> in Content-Type',
+    ),
+  ];
+  const faults = endpoint.responses.find((response) => response.status === '500');
+  const named = faults?.contents?.[0]?.examples?.filter((example) => example.key !== 'Server') ?? [];
+  if (named.length) {
+    items.push(metaItem(warnIcon(), named.map((example) => esc(example.summary)).join(', '), named.length === 1 ? 'Declared fault' : 'Declared faults'));
+  }
+  return `<div class="endpoint-meta">
+    ${items.join('\n    ')}
+  </div>`;
 }
 
 function metaItem(icon, main, sub, extraClass = '') {
@@ -342,8 +371,12 @@ function examplesPanel(label, content, groupId) {
   const examples = content.examples ?? [];
   if (examples.length === 0) return '';
   const isJson = /json/.test(content.contentType ?? '') || typeof examples[0].value === 'object';
+
+  const isXml = /xml/.test(content.contentType ?? '');
   const render = (value) =>
-    isJson || typeof value !== 'string' ? highlight(JSON.stringify(value, null, 2), 'json') : esc(value);
+    isJson || typeof value !== 'string'
+      ? highlight(JSON.stringify(value, null, 2), 'json')
+      : isXml ? highlight(value, 'xml') : esc(value);
   if (examples.length === 1) return jsonPanel(label, examples[0].value, render);
   const tabs = examples.map((example, index) => ({
     id: `${groupId}-ex-${index}`,

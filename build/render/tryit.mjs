@@ -15,7 +15,7 @@ export function tryItLauncher(endpoint) {
   return `<button type="button" class="tryit-launch js-only" data-tryit-open>
   <svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M13 2 3 14h7l-1 8 10-12h-7l1-8z"/></svg>
   <span>Try it</span>
-  <span class="tryit-launch-path">${esc(endpoint.method)} ${esc(shortPath(endpoint.path))}</span>
+  <span class="tryit-launch-path">${endpoint.soap ? `SOAP ${esc(endpoint.soap.operation)}` : `${esc(endpoint.method)} ${esc(shortPath(endpoint.path))}`}</span>
 </button>`;
 }
 
@@ -27,7 +27,7 @@ function shortPath(path) {
 export function tryItDrawer(model, endpoint) {
   const isMultipart = endpoint.requestBody?.contentType.includes('multipart') ?? false;
   const sections = [
-    serverField(model),
+    serverField(model, endpoint),
     endpoint.security.some((alternative) => alternative.length > 0) ? authRow(endpoint) : '',
     paramSection('Path', endpoint.params.path.map((param) => paramField(param, 'path'))),
     paramSection('Query', endpoint.params.query.map((param) => paramField(param, 'query'))),
@@ -39,10 +39,10 @@ export function tryItDrawer(model, endpoint) {
   // Alternatives (OR) of scheme ids (AND) — the runtime picks the first one
   // whose credentials are all configured.
   const security = JSON.stringify(endpoint.security.map((alternative) => alternative.map((entry) => entry.id)));
-  return `<dialog class="tryit-drawer" data-tryit data-method="${esc(endpoint.method)}" data-path="${esc(endpoint.path)}" data-security="${esc(security)}" aria-label="Try it – ${esc(endpoint.method)} ${esc(endpoint.path)}">
+  return `<dialog class="tryit-drawer" data-tryit data-method="${esc(endpoint.method)}" data-path="${esc(endpoint.soap ? '' : endpoint.path)}" data-accept="${endpoint.soap ? 'text/xml, application/soap+xml' : 'application/json'}" data-security="${esc(security)}" aria-label="Try it – ${esc(endpoint.method)} ${esc(endpoint.path)}">
   <form class="tryit-form">
     <header class="tryit-head">
-      <div class="tryit-head-title">${methodBadge(endpoint.method)}<code class="tryit-head-path">${esc(endpoint.path)}</code></div>
+      <div class="tryit-head-title">${methodBadge(endpoint.badge ?? endpoint.method)}<code class="tryit-head-path">${esc(endpoint.soap ? endpoint.soap.operation : endpoint.path)}</code></div>
       <button type="button" class="tryit-close" data-tryit-close aria-label="Close">
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M18 6 6 18M6 6l12 12"/></svg>
       </button>
@@ -71,8 +71,11 @@ ${sections.join('\n')}
  * runtime and reappear in the list. The hidden input is the single source
  * of truth the request is built from.
  */
-function serverField(model) {
-  const servers = model.servers.length ? model.servers : [{ url: model.baseUrl, resolved: model.baseUrl, variables: [] }];
+function serverField(model, endpoint) {
+  // Operation-level servers win (a SOAP operation's port address).
+  const servers = endpoint.servers?.length
+    ? endpoint.servers
+    : model.servers.length ? model.servers : [{ url: model.baseUrl, resolved: model.baseUrl, variables: [] }];
   const options = servers
     .map((server) => {
       const label = server.description ? `${server.description} — ${server.url}` : server.url;
@@ -229,6 +232,16 @@ function bodySection(endpoint, isMultipart) {
         : JSON.stringify(body.example, null, 2);
   const rows = Math.max(6, Math.min(example.split('\n').length + 1, 20));
   const title = isJson ? 'Body · JSON' : isForm ? 'Body · form (edited as JSON)' : `Body · ${body.contentType}`;
+  if (!isJson && !isForm) {
+    // XML and other text bodies: a plain editor. The overlay highlighter
+    // below speaks JSON only and would drift out of sync with markup.
+    // SOAP 1.2 carries the action in the media type itself.
+    const action = endpoint.soap?.version === '1.2' && endpoint.soap.action ? `; action="${endpoint.soap.action}"` : '';
+    const contentType = `${body.contentType}${/xml/.test(body.contentType) ? '; charset=utf-8' : ''}${action}`;
+    return paramSection(title, [
+      `        <textarea class="tryit-input tryit-textbody" data-t="json" data-content-type="${esc(contentType)}" rows="${rows}" spellcheck="false" autocomplete="off">${esc(example)}</textarea>`,
+    ]);
+  }
   // Syntax-highlighted editor: a highlighted <pre> sits behind a transparent
   // textarea; the runtime re-highlights on input and keeps scroll in sync.
   return paramSection(title, [

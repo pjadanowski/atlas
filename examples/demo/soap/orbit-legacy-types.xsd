@@ -1,0 +1,163 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<xsd:schema xmlns:xsd="http://www.w3.org/2001/XMLSchema"
+            xmlns:ob="urn:orbit:legacy:types"
+            targetNamespace="urn:orbit:legacy:types"
+            elementFormDefault="qualified"
+            attributeFormDefault="unqualified">
+
+  <xsd:annotation>
+    <xsd:documentation>Data types of the Orbit Legacy Booking service (fictional).</xsd:documentation>
+  </xsd:annotation>
+
+  <xsd:simpleType name="StationCode">
+    <xsd:annotation><xsd:documentation>Three-letter station code.</xsd:documentation></xsd:annotation>
+    <xsd:restriction base="xsd:string">
+      <xsd:pattern value="[A-Z]{3}"/>
+    </xsd:restriction>
+  </xsd:simpleType>
+
+  <xsd:simpleType name="CabinClass">
+    <xsd:restriction base="xsd:string">
+      <xsd:enumeration value="economy"><xsd:annotation><xsd:documentation>Shared cabin</xsd:documentation></xsd:annotation></xsd:enumeration>
+      <xsd:enumeration value="business"/>
+      <xsd:enumeration value="suite"/>
+    </xsd:restriction>
+  </xsd:simpleType>
+
+  <xsd:simpleType name="SeatList">
+    <xsd:annotation><xsd:documentation>Space-separated seat codes, e.g. "12A 12B".</xsd:documentation></xsd:annotation>
+    <xsd:list itemType="xsd:string"/>
+  </xsd:simpleType>
+
+  <xsd:complexType name="Money">
+    <xsd:annotation><xsd:documentation>An amount with its currency as an attribute.</xsd:documentation></xsd:annotation>
+    <xsd:simpleContent>
+      <xsd:extension base="xsd:decimal">
+        <xsd:attribute name="currency" type="xsd:string" use="required"/>
+      </xsd:extension>
+    </xsd:simpleContent>
+  </xsd:complexType>
+
+  <xsd:complexType name="Traveller" abstract="true">
+    <xsd:annotation><xsd:documentation>Someone on board. Abstract: send an Adult or a Child via xsi:type.</xsd:documentation></xsd:annotation>
+    <xsd:sequence>
+      <xsd:element name="FullName" type="xsd:string"/>
+      <xsd:element name="BirthDate" type="xsd:date" minOccurs="0"/>
+    </xsd:sequence>
+    <xsd:attribute name="id" type="xsd:ID"/>
+  </xsd:complexType>
+
+  <xsd:complexType name="Adult">
+    <xsd:complexContent>
+      <xsd:extension base="ob:Traveller">
+        <xsd:sequence>
+          <xsd:element name="PassportNumber" type="xsd:string"/>
+        </xsd:sequence>
+      </xsd:extension>
+    </xsd:complexContent>
+  </xsd:complexType>
+
+  <xsd:complexType name="Child">
+    <xsd:complexContent>
+      <xsd:extension base="ob:Traveller">
+        <xsd:sequence>
+          <xsd:element name="GuardianName" type="xsd:string"/>
+        </xsd:sequence>
+      </xsd:extension>
+    </xsd:complexContent>
+  </xsd:complexType>
+
+  <xsd:complexType name="Contact">
+    <xsd:annotation><xsd:documentation>How to reach the booker: exactly one channel.</xsd:documentation></xsd:annotation>
+    <xsd:choice>
+      <xsd:element name="Email" type="xsd:string"/>
+      <xsd:element name="Phone" type="xsd:string"/>
+    </xsd:choice>
+  </xsd:complexType>
+
+  <xsd:complexType name="Reservation">
+    <xsd:sequence>
+      <xsd:element name="Reference" type="xsd:string"/>
+      <xsd:element name="From" type="ob:StationCode"/>
+      <xsd:element name="To" type="ob:StationCode"/>
+      <xsd:element name="DepartsAt" type="xsd:dateTime"/>
+      <xsd:element name="Cabin" type="ob:CabinClass" default="economy"/>
+      <xsd:element name="Seats" type="ob:SeatList" minOccurs="0"/>
+      <xsd:element name="Traveller" type="ob:Traveller" maxOccurs="9"/>
+      <xsd:element name="Total" type="ob:Money"/>
+    </xsd:sequence>
+    <xsd:attribute name="status" use="required">
+      <xsd:simpleType>
+        <xsd:restriction base="xsd:string">
+          <xsd:enumeration value="held"/>
+          <xsd:enumeration value="confirmed"/>
+          <xsd:enumeration value="cancelled"/>
+        </xsd:restriction>
+      </xsd:simpleType>
+    </xsd:attribute>
+  </xsd:complexType>
+
+  <xsd:element name="ReserveSeats">
+    <xsd:complexType>
+      <xsd:sequence>
+        <xsd:element name="From" type="ob:StationCode"/>
+        <xsd:element name="To" type="ob:StationCode"/>
+        <xsd:element name="DepartureDate" type="xsd:date"/>
+        <xsd:element name="Cabin" type="ob:CabinClass" minOccurs="0"/>
+        <xsd:element name="Traveller" type="ob:Traveller" maxOccurs="9"/>
+        <xsd:element name="Contact" type="ob:Contact"/>
+      </xsd:sequence>
+    </xsd:complexType>
+  </xsd:element>
+
+  <xsd:element name="ReserveSeatsResponse">
+    <xsd:complexType>
+      <xsd:sequence>
+        <xsd:element name="Reservation" type="ob:Reservation"/>
+      </xsd:sequence>
+    </xsd:complexType>
+  </xsd:element>
+
+  <xsd:element name="GetReservation">
+    <xsd:complexType>
+      <xsd:sequence>
+        <xsd:element name="Reference" type="xsd:string"/>
+      </xsd:sequence>
+    </xsd:complexType>
+  </xsd:element>
+
+  <xsd:element name="GetReservationResponse">
+    <xsd:complexType>
+      <xsd:sequence>
+        <xsd:element name="Reservation" type="ob:Reservation" nillable="true"/>
+      </xsd:sequence>
+    </xsd:complexType>
+  </xsd:element>
+
+  <xsd:element name="CancelReservation">
+    <xsd:complexType>
+      <xsd:sequence>
+        <xsd:element name="Reference" type="xsd:string"/>
+        <xsd:element name="Reason" type="xsd:string" minOccurs="0"/>
+      </xsd:sequence>
+    </xsd:complexType>
+  </xsd:element>
+
+  <xsd:element name="CancelReservationResponse">
+    <xsd:complexType>
+      <xsd:sequence>
+        <xsd:element name="Refund" type="ob:Money"/>
+      </xsd:sequence>
+    </xsd:complexType>
+  </xsd:element>
+
+  <xsd:element name="BookingFault">
+    <xsd:annotation><xsd:documentation>Business error raised by the booking engine.</xsd:documentation></xsd:annotation>
+    <xsd:complexType>
+      <xsd:sequence>
+        <xsd:element name="Code" type="xsd:int"/>
+        <xsd:element name="Message" type="xsd:string"/>
+      </xsd:sequence>
+    </xsd:complexType>
+  </xsd:element>
+</xsd:schema>

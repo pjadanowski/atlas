@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto';
-import { copyFile, mkdir, readdir, readFile, rm, writeFile } from 'node:fs/promises';
+import { access, copyFile, mkdir, readdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { extname, isAbsolute, join, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { parseArgs } from 'node:util';
@@ -18,6 +18,7 @@ import { modelContent, modelCodeColumn, modelsIndexContent } from './render/mode
 import { endpointMarkdown, llmsIndex, modelMarkdown } from './markdown.mjs';
 import { mcpManifest } from './mcp.mjs';
 import { themeCss } from './themes.mjs';
+import { loadWsdl, mergeSoap } from './wsdl.mjs';
 
 const ROOT = fileURLToPath(new URL('..', import.meta.url));
 
@@ -43,12 +44,24 @@ export async function buildDocs({
   logo = '',
   favicon = '',
   title = '',
+  wsdl = [],
 } = {}) {
   const started = performance.now();
   const DIST = absolute(out);
   const ASSETS = join(ROOT, 'assets');
 
-  const spec = await loadSpec(absolute(specPath));
+  // SOAP services (WSDL) join the OpenAPI document, or stand alone when no
+  // spec is given — `--wsdl` without `--spec` documents SOAP only.
+  const wsdlFiles = [wsdl].flat().filter(Boolean);
+  const hasSpec = Boolean(specPath) && (wsdlFiles.length === 0 || (await exists(absolute(specPath))));
+  const fragments = [];
+  for (const file of wsdlFiles) fragments.push(await loadWsdl(/^https?:/i.test(file) ? file : absolute(file)));
+  const restSpec = hasSpec ? await loadSpec(absolute(specPath)) : null;
+  // The /openapi.json download is the REST document as given — serialized
+  // now, before SOAP services are merged into the in-memory copy, and as
+  // JSON even when the source is YAML or split across files.
+  const specDownload = restSpec && !/\.json$/i.test(specPath) ? JSON.stringify(restSpec, null, 2) : null;
+  const spec = mergeSoap(restSpec, fragments);
   const model = buildModel(spec);
   model.lang = lang;
   if (title) model.title = title;
@@ -193,7 +206,9 @@ export async function buildDocs({
   // Machine-readable mirrors: the raw spec (Postman/Insomnia import),
   // llms.txt pointing AI tools at the markdown pages, and the manifest the
   // MCP endpoint (build/mcp.mjs, the Laravel package) describes itself with.
-  await copyFile(absolute(specPath), join(DIST, 'openapi.json'));
+  if (specDownload) await writeFile(join(DIST, 'openapi.json'), specDownload);
+  else if (hasSpec) await copyFile(absolute(specPath), join(DIST, 'openapi.json'));
+  else await writeFile(join(DIST, 'openapi.json'), JSON.stringify(spec, null, 2));
   await writeFile(join(DIST, 'llms.txt'), llmsIndex(model));
   await writeFile(join(DIST, 'assets', 'mcp-manifest.json'), JSON.stringify(mcpManifest(model)));
 
@@ -210,6 +225,15 @@ export async function buildDocs({
   const pages = model.endpoints.length + model.webhooks.length + tagPages + 1 + (model.models.length ? model.models.length + 1 : 0);
   const mount = mountedAt ? ` (served from ${mountedAt}/)` : '';
   console.log(`✓ ${pages} pages generated in ${elapsed}ms → ${out}/${mount}`);
+}
+
+async function exists(path) {
+  try {
+    await access(path);
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 function absolute(path) {
@@ -282,7 +306,7 @@ function minifyCss(css) {
 //                           [--base /docs/api] [--allow-spec-html]
 //                           [--css theme.css]... [--js extra.js]...
 //                           [--theme ocean] [--logo logo.svg] [--favicon icon.png]
-//                           [--title "My API"]
+//                           [--title "My API"] [--wsdl service.wsdl]...
 // Skipped when the module is imported programmatically.
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
   const { values } = parseArgs({
@@ -298,6 +322,7 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
       logo: { type: 'string', default: '' },
       favicon: { type: 'string', default: '' },
       title: { type: 'string', default: '' },
+      wsdl: { type: 'string', multiple: true, default: [] },
     },
   });
   values.allowSpecHtml = values['allow-spec-html'];

@@ -87,7 +87,7 @@ function resourceIndex(model) {
         .slice(0, 3)
         .map(
           (endpoint) =>
-            `<a class="resource-endpoint" href="${esc(url(endpoint.href))}">${methodBadge(endpoint.method)}<span>${esc(endpoint.title)}</span></a>`,
+            `<a class="resource-endpoint" href="${esc(url(endpoint.href))}">${methodBadge(endpoint.badge ?? endpoint.method)}<span>${esc(endpoint.title)}</span></a>`,
         )
         .join('\n      ');
       return `    <div class="resource-card">
@@ -120,9 +120,9 @@ export function tagContent(model, tag) {
   const rows = endpoints
     .map(
       (endpoint) => `    <a class="tag-endpoint${endpoint.deprecated ? ' is-deprecated' : ''}" href="${esc(url(endpoint.href))}">
-      ${methodBadge(endpoint.method)}
-      <code class="tag-endpoint-path">${esc(endpoint.path)}</code>
-      <span class="tag-endpoint-title">${esc(endpoint.title)}</span>
+      ${methodBadge(endpoint.badge ?? endpoint.method)}
+      <code class="tag-endpoint-path">${esc(endpoint.soap ? endpoint.soap.operation : endpoint.path)}</code>
+      <span class="tag-endpoint-title">${esc(endpoint.soap ? firstLine(endpoint.description) || `SOAPAction ${endpoint.soap.action || '—'}` : endpoint.title)}</span>
     </a>`,
     )
     .join('\n');
@@ -144,4 +144,8 @@ ${rows}
   </div>
 </section>
 </article>`;
+}
+
+function firstLine(text) {
+  return String(text ?? '').split('\n')[0].trim();
 }

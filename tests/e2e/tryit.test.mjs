@@ -226,3 +226,14 @@ test('server variables are substituted into the base URL', { skip }, async () =>
   })()`);
   assert.equal(url, 'https://mars.api.orbit.example/v2');
 });
+
+test('SOAP operations send the envelope with SOAPAction and an XML content type', { skip }, async () => {
+  const text = await sendTryIt('/soap-legacybooking/legacybooking-reserveseats/', { auth: {} });
+  const response = echoed(text);
+  // The viewer shows the echoed JSON with escaped quotes: \"…\".
+  assert.match(text, /soapaction: "\\"urn:orbit:legacy:ReserveSeats\\""/, 'quoted SOAPAction header');
+  assert.match(text, /content-type: "text\/xml; charset=utf-8"/, 'SOAP 1.1 content type');
+  assert.match(text, /accept: "text\/xml/, 'asks for XML back');
+  assert.ok(response.has('<ob:ReserveSeats>'), 'envelope body');
+  assert.match(text, /method: "POST"/);
+});

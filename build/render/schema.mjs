@@ -4,6 +4,12 @@ import { url } from '../url.mjs';
 import { enumPills } from './ui.mjs';
 
 const MAX_DEPTH = 8;
+// Named schemas (components with their own model page) are expanded inline
+// this many levels deep; below that, and once a page has rendered this many
+// attribute rows, they become links. Without a bound, APIs whose objects
+// reference each other everywhere (Stripe) render tens of megabytes per page.
+const REF_DEPTH = 2;
+const ROW_BUDGET = 400;
 
 // Radio groups need page-unique ids; a build-wide counter is the simplest
 // thing that is unique on every page.
@@ -23,7 +29,7 @@ let variantGroupCounter = 0;
  *   ones (never sent back); model pages show both, badged.
  */
 export function schemaBody(spec, schema, options = {}) {
-  const opts = { expanded: false, depth: 0, seenRefs: new Set(), mode: 'model', ...options };
+  const opts = { expanded: false, depth: 0, refDepth: 0, seenRefs: new Set(), mode: 'model', budget: { rows: 0 }, ...options };
   const rows = attributeRows(spec, schema, opts);
   return [
     rows ? `<div class="attr-list">\n${rows}\n</div>` : '',
@@ -35,7 +41,7 @@ export function schemaBody(spec, schema, options = {}) {
 }
 
 export function attributeRows(spec, schema, options = {}) {
-  const opts = { expanded: false, depth: 0, seenRefs: new Set(), mode: 'model', ...options };
+  const opts = { expanded: false, depth: 0, refDepth: 0, seenRefs: new Set(), mode: 'model', budget: { rows: 0 }, ...options };
   const required = new Set(schema?.required ?? []);
   return Object.entries(schema?.properties ?? {})
     .filter(([, raw]) => isVisible(spec, raw, opts.mode))
@@ -71,16 +77,23 @@ function attributeRow(spec, name, raw, isRequired, opts) {
     opts.mode === 'model' && schema.readOnly ? '<span class="attr-flag">read-only</span>' : '',
     opts.mode === 'model' && schema.writeOnly ? '<span class="attr-flag">write-only</span>' : '',
     schema.deprecated ? '<span class="attr-deprecated">deprecated</span>' : '',
+    schema.xml?.attribute ? '<span class="attr-flag">XML attribute</span>' : '',
+    schema.xml?.['x-text'] ? '<span class="attr-flag">element text</span>' : '',
   ]
     .filter(Boolean)
     .join('\n      ');
 
+  opts.budget.rows += 1;
+  const named = isComponent(spec, displayRef) && hasFields(item ?? schema);
   const child = recursive
     ? `<p class="attr-recursive">Recursive structure — see ${modelRef(displayRef ?? 'Schema')}</p>`
-    : childAttributes(spec, schema, item, { ...opts, seenRefs });
+    : named && atRefLimit(opts)
+      ? `<p class="attr-recursive">Fields documented in ${modelRef(displayRef)}</p>`
+      : childAttributes(spec, schema, item, { ...opts, seenRefs, refDepth: named ? opts.refDepth + 1 : opts.refDepth });
 
   const body = [
     descriptionHtml(schema.description, 'attr-desc'),
+    abstractNote(schema) || (item ? abstractNote(item) : ''),
     constraintList(schema, item),
     enumPills(schema.enum ? schema : item),
     child,
@@ -94,6 +107,31 @@ function attributeRow(spec, name, raw, isRequired, opts) {
     </div>
     ${body}
   </div>`;
+}
+
+/**
+ * XSD abstract types (from WSDL): instances are sent as one of the derived
+ * types, named with xsi:type — list them, linked.
+ */
+export function abstractNote(schema) {
+  const derived = schema?.['x-xsd-derived'] ?? [];
+  if (!schema?.['x-xsd-abstract'] || derived.length === 0) return '';
+  const shown = derived.slice(0, 12).map((name) => modelRef(name)).join(', ');
+  const more = derived.length > 12 ? ` and ${derived.length - 12} more` : '';
+  return `<p class="attr-abstract">Abstract — send one of ${shown}${more}, named with <code>xsi:type</code></p>`;
+}
+
+/** True for a schema that has its own model page (a `components.schemas` entry). */
+function isComponent(spec, name) {
+  return Boolean(name) && Object.hasOwn(spec.components?.schemas ?? {}, name);
+}
+
+function hasFields(schema) {
+  return Boolean(schema && (schema.properties || schema.oneOf || schema.anyOf || schema.allOf || typeof schema.additionalProperties === 'object'));
+}
+
+function atRefLimit(opts) {
+  return opts.refDepth >= REF_DEPTH || opts.budget.rows > ROW_BUDGET;
 }
 
 /** Keys written next to a `$ref` — in 3.1 they refine the referenced schema. */
@@ -138,9 +176,12 @@ function variantsBlock(spec, schema, opts) {
     const selector = discriminator ? mapping.get(raw?.$ref) ?? refName : null;
     const seenRefs = raw?.$ref ? new Set([...opts.seenRefs, raw.$ref]) : opts.seenRefs;
     const recursive = raw?.$ref && opts.seenRefs.has(raw.$ref);
+    const named = isComponent(spec, refName) && hasFields(variant);
     const body = recursive
       ? `<p class="attr-recursive">Recursive structure — see ${modelRef(refName)}</p>`
-      : schemaBody(spec, variant, { ...opts, depth: opts.depth + 1, seenRefs });
+      : named && atRefLimit(opts)
+        ? `<p class="attr-recursive">Fields documented in ${modelRef(refName)}</p>`
+        : schemaBody(spec, variant, { ...opts, depth: opts.depth + 1, seenRefs, refDepth: named ? opts.refDepth + 1 : opts.refDepth });
     return { id: `${group}-${index}`, label, selector, refName, variant, body };
   });
 

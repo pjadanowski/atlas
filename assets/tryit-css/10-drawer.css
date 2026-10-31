@@ -523,3 +523,14 @@
   flex: 1;
   min-width: 0;
 }
+
+/* ---- Plain text body editor (XML, SOAP envelopes, other media types) ---- */
+
+.tryit-textbody {
+  resize: vertical;
+  min-height: 160px;
+  line-height: 1.5;
+  white-space: pre;
+  overflow: auto;
+  tab-size: 2;
+}

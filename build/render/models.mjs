@@ -1,7 +1,7 @@
 import { descriptionHtml, esc } from '../text.mjs';
 import { url } from '../url.mjs';
 import { highlight } from '../highlight.mjs';
-import { schemaBody } from './schema.mjs';
+import { abstractNote, schemaBody } from './schema.mjs';
 import { copyButton, expandButton } from './ui.mjs';
 
 /** Index page: every schema from components.schemas, grouped by first letter. */
@@ -59,6 +59,7 @@ export function modelContent(spec, entry) {
   </nav>
   <h1><code class="model-title">${esc(entry.name)}</code></h1>
   ${entry.description ? descriptionHtml(entry.description, 'endpoint-desc') : ''}
+  ${abstractNote(entry.schema)}
 </header>
 <section class="doc-section">
   <div class="doc-section-head">

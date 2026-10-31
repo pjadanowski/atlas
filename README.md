@@ -1,7 +1,7 @@
 # Atlas
 
-**Fast, static, three-column API documentation for OpenAPI 3.x — and a drop-in
-renderer for [Laravel Scramble](https://scramble.dedoc.co).**
+**Fast, static, three-column API documentation for OpenAPI 3.x and SOAP (WSDL)
+— and a drop-in renderer for [Laravel Scramble](https://scramble.dedoc.co).**
 
 Atlas turns an OpenAPI document into a fully static site: every endpoint,
 model and tag is pre-rendered HTML, readable with JavaScript turned off.
@@ -25,6 +25,12 @@ no runtime OpenAPI parsing, no npm dependencies — Node alone builds it.
   switchers, response headers, cookie parameters, callbacks, webhooks,
   server variables, tag groups (`x-tagGroups`), `x-displayName`,
   `x-codeSamples`, deprecations.
+- **SOAP services from WSDL** — next to your REST API or on their own:
+  operations with full XML envelopes, SOAP 1.1/1.2, faults, XSD types as
+  browsable models (abstract types, `choice`, attributes, imports across
+  dozens of files), PHP `SoapClient` / zeep / cURL samples and try-it.
+- **YAML or JSON, one file or many** — external `$ref`s across files are
+  bundled at build time.
 - **Code samples in 12 clients** — cURL, HTTPie, JavaScript, Guzzle, Laravel
   `Http`, PHP, Python requests, HTTPX, Go, Ruby, Java, C# — with credentials
   derived from each operation's security requirements.
@@ -103,6 +109,7 @@ What Scramble's config controls:
 | `lang` | `en` | page `lang` attribute |
 | `api` | `default` | which Scramble API to document (`Scramble::registerApi`) |
 | `route_prefix` | detected | set if Scramble's UI route moved and detection fails |
+| `wsdl` | `[]` | WSDL files/URLs documented as SOAP services next to the REST API |
 | `allow_spec_html` | `false` | render HTML-authored descriptions verbatim — see [Security](#security) |
 | `node`, `timeout` | `node`, `300` | generator binary and time limit |
 
@@ -127,7 +134,7 @@ between releases, which works but means a skipped build goes unnoticed. For
 atomic releases and rollbacks that include the docs, build into the release
 itself: `'output' => base_path('atlas-docs')`.
 
-## Standalone (any OpenAPI 3.x spec)
+## Standalone (any OpenAPI 3.x spec, WSDL)
 
 ```bash
 git clone https://github.com/pjadanowski/atlas && cd atlas
@@ -137,7 +144,8 @@ npm run preview           # http://localhost:4173, with the MCP endpoint
 
 | Flag | Default | Meaning |
 | --- | --- | --- |
-| `--spec` | `openapi.json` | source specification (JSON) |
+| `--spec` | `openapi.json` | source specification (JSON or YAML; may `$ref` other files) |
+| `--wsdl` | — | WSDL 1.1 file or URL to document as SOAP services, repeatable |
 | `--out` | `dist` | output directory |
 | `--base` | — | sub-path the site is served from, e.g. `/docs/api` |
 | `--lang` | `en` | page `lang` attribute |
@@ -160,6 +168,36 @@ Only `/mcp` needs a runtime: the preview server or the Laravel package.
 `npm run build` renders the bundled demo — the fictional *Orbit Travel API*
 in [`examples/demo/openapi.json`](examples/demo/openapi.json), which exercises
 every supported feature.
+
+## SOAP services (WSDL)
+
+Pass one or more WSDL 1.1 files or URLs — with an OpenAPI document, or alone:
+
+```bash
+node build/index.mjs --spec openapi.yaml --wsdl soap/booking.wsdl --wsdl https://partner.example/service?wsdl
+node build/index.mjs --wsdl soap/booking.wsdl          # SOAP-only site
+```
+
+In Laravel, list them in `config/atlas.php` (`'wsdl' => [resource_path('soap/booking.wsdl')]`);
+auto-build notices changes to the WSDL and the schemas beside it.
+
+Each service gets its own sidebar section ("SOAP services"); each operation
+becomes a page with its endpoint address, SOAPAction, request and response
+envelopes generated from the XSD, declared faults, and samples for cURL, PHP
+`SoapClient`, Laravel `Http`, Python zeep, `fetch` and raw HTTP. The try-it
+console posts the envelope with the right `Content-Type` and `SOAPAction`
+and pretty-prints the XML that comes back. XSD types are listed under Models.
+
+| Supported | Not supported |
+| --- | --- |
+| WSDL 1.1 `document/literal` and `rpc/literal`, SOAP 1.1 and 1.2 ports (shown as one operation) | WSDL 2.0, `rpc/encoded` |
+| `wsdl:import`, `xsd:import`/`include` — local files and http(s) | WS-Security / WS-Policy headers |
+| `sequence`, `all`, `choice`, groups, element refs, `minOccurs`/`maxOccurs` | `xsd:redefine` semantics (treated as include), substitution groups |
+| attributes and attribute groups, `simpleContent`, `complexContent` extension/restriction | |
+| abstract types (listed with the derived types to send via `xsi:type`) | |
+| simple type facets, enumerations (with docs), lists, unions | |
+
+Tested against public SOAP services (.NET and others) and the BiPRO 2.6 schema set (60+ XSD files).
 
 ## Customizing
 

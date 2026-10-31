@@ -1,5 +1,33 @@
 # Changelog
 
+## Unreleased
+
+### Added
+- SOAP: WSDL 1.1 services (`--wsdl`, `atlas.wsdl`) documented next to the
+  REST API or alone — envelopes generated from XSD, SOAP 1.1/1.2, faults,
+  abstract types via `xsi:type`, SOAP samples (cURL, PHP SoapClient,
+  Laravel, zeep, fetch, raw HTTP), try-it with XML responses pretty-printed.
+- YAML specs and specs split across files (external `$ref`s bundled at
+  build time), with a zero-dependency YAML 1.2 parser — checked against
+  PyYAML on the GitHub, Stripe, OpenAI, Twilio and DigitalOcean specs.
+- Webhook-only (3.1) documents.
+- Zero-dependency XML parser and XML highlighting.
+- Example values that satisfy simple `pattern`s.
+
+### Changed
+- Large APIs: nested named schemas are inlined two levels deep (then
+  linked to their model page) within a per-section row budget; above 250
+  operations the sidebar lists only the open group's endpoints; untagged
+  operations of large specs are grouped by path segment. Stripe's spec now
+  builds in ~20 s instead of 260 s, with pages of ~0.3 MB instead of 44 MB.
+
+### Fixed
+- Specs using Swagger 2's `required: true` on properties crashed the build;
+  it is now honored as the parent's `required` list.
+- Markdown pages (llms.txt, MCP) described every protected endpoint as
+  needing a bearer token; they now list the actual schemes and scopes.
+- Try-it asked SOAP services for JSON (`Accept`).
+
 ## 0.1.0 — 2026-10-31
 
 First public release.

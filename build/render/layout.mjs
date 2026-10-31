@@ -87,7 +87,14 @@ ${assets.customJs ? `<script src="${esc(assets.customJs)}" defer></script>\n` : 
 `;
 }
 
+// Above this many operations the sidebar lists only the open group's
+// endpoints; every other group links to its tag page. Repeating thousands of
+// links on thousands of pages makes the site grow quadratically (GitHub's
+// API: ~450 KB of sidebar per page).
+const COMPACT_NAV_AFTER = 250;
+
 function sidebar(model, activeHref) {
+  const compact = model.endpoints.length > COMPACT_NAV_AFTER;
   const isHome = activeHref === '/';
   const isModels = activeHref.startsWith('/models/');
   // Only the description's outermost heading level: a table of contents, not an outline.
@@ -106,7 +113,7 @@ ${model.auth.length ? `      <a class="nav-page" href="${esc(url('/#authenticati
   const sections = model.nav
     .map((section, index) => {
       const labelId = `nav-section-${index}`;
-      const groups = section.nodes.map((node) => navGroup(node, activeHref)).join('\n');
+      const groups = section.nodes.map((node) => navGroup(node, activeHref, false, compact)).join('\n');
       return `    <p class="nav-label" id="${labelId}">${esc(section.name)}</p>
     <div class="nav-tree" role="list" aria-labelledby="${labelId}">
 ${groups}
@@ -123,12 +130,20 @@ ${model.webhooks.map((hook) => navLink(hook, activeHref, true)).join('\n')}
   return `${intro}\n${sections}${webhooks}`;
 }
 
-function navGroup(node, activeHref, nested = false) {
+function navGroup(node, activeHref, nested = false, compact = false) {
   const containsActive = groupContains(node, activeHref);
   const isTagPage = node.href !== null && node.href === activeHref;
+  if (compact && !containsActive && !isTagPage && node.href) {
+    const count = countOperations(node);
+    return `      <a class="nav-group-link${nested ? ' nav-group--nested' : ''}" href="${esc(url(node.href))}">
+        <svg class="nav-chevron" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m9 18 6-6-6-6"/></svg>
+        <span>${esc(node.name)}</span>
+        <span class="nav-group-count">${count}</span>
+      </a>`;
+  }
   const links = node.endpoints.map((endpoint) => navLink(endpoint, activeHref)).join('\n');
   const children = node.children
-    .map((child) => navGroup(child, activeHref, true))
+    .map((child) => navGroup(child, activeHref, true, compact))
     .join('\n');
   const overview = node.href
     ? `          <a class="nav-overview${isTagPage ? ' is-active' : ''}" href="${esc(url(node.href))}"${isTagPage ? ' aria-current="page"' : ''}>Overview</a>\n`
@@ -139,9 +154,13 @@ function navGroup(node, activeHref, nested = false) {
           <span>${esc(node.name)}</span>
         </summary>
         <div class="nav-group-body">
-${node.description ? overview : ''}${links}${children ? `\n${children}` : ''}
+${node.description || compact ? overview : ''}${links}${children ? `\n${children}` : ''}
         </div>
       </details>`;
+}
+
+function countOperations(node) {
+  return node.endpoints.length + node.children.reduce((sum, child) => sum + countOperations(child), 0);
 }
 
 function groupContains(node, activeHref) {
@@ -158,7 +177,7 @@ function navLink(endpoint, activeHref, topLevel = false) {
     .filter(Boolean)
     .join(' ');
   return `          <a class="${classes}" href="${esc(url(endpoint.href))}" title="${esc(tooltip)}"${isActive ? ' aria-current="page"' : ''}>
-            ${methodBadge(endpoint.method)}
+            ${methodBadge(endpoint.badge ?? endpoint.method)}
             <span class="nav-endpoint-title">${esc(endpoint.title)}</span>
           </a>`;
 }

@@ -20,7 +20,7 @@ export function buildSearchIndex(model) {
   return [
     ...[...model.endpoints, ...(model.webhooks ?? [])].map((endpoint) => ({
       t: endpoint.title,
-      m: endpoint.method,
+      m: endpoint.badge ?? endpoint.method,
       p: endpoint.path,
       h: url(endpoint.href),
       g: endpoint.tag,

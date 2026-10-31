@@ -112,7 +112,28 @@ class SiteBuilder
             json_encode(Config::get('atlas')),
             $this->location->base(),
             $this->generatorVersion(),
+            $this->wsdlVersion(),
         ]));
+    }
+
+    /**
+     * Local WSDL files and the schemas beside them (imports usually sit in
+     * the same directory): their modification times, so editing an XSD
+     * rebuilds too. Remote WSDLs are fetched at build time and not tracked.
+     */
+    private function wsdlVersion(): string
+    {
+        $stamps = [];
+        foreach ((array) Config::get('atlas.wsdl', []) as $wsdl) {
+            if (preg_match('~^https?://~i', (string) $wsdl) || ! is_file($wsdl)) {
+                continue;
+            }
+            foreach (glob(dirname($wsdl).'/*.{wsdl,xsd}', GLOB_BRACE) ?: [] as $file) {
+                $stamps[] = $file.':'.filemtime($file);
+            }
+        }
+
+        return implode('|', $stamps);
     }
 
     public function autoBuildEnabled(): bool
@@ -167,6 +188,11 @@ class SiteBuilder
                 $command[] = "--{$option}";
                 $command[] = $value;
             }
+        }
+
+        foreach ((array) Config::get('atlas.wsdl', []) as $wsdl) {
+            $command[] = '--wsdl';
+            $command[] = $wsdl;
         }
 
         foreach (['css', 'js'] as $kind) {

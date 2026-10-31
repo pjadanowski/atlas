@@ -103,6 +103,22 @@ class IntegrationTest extends TestCase
         $this->get('/docs/api/other/post-widgets/')->assertOk();
     }
 
+    public function test_soap_services_are_documented_next_to_the_scramble_api(): void
+    {
+        Gate::define('viewApiDocs', fn ($user = null) => true);
+        config()->set('atlas.wsdl', [dirname(__DIR__).'/examples/demo/soap/orbit-legacy.wsdl']);
+
+        $this->artisan('atlas:build')->assertSuccessful();
+
+        // REST from Scramble and SOAP from the WSDL, side by side.
+        $this->get('/docs/api/other/get-widgets/')->assertOk();
+        $page = $this->get('/docs/api/soap-legacybooking/legacybooking-reserveseats/');
+        $page->assertOk();
+        $html = $page->streamedContent(); // a BinaryFileResponse
+        $this->assertStringContainsString('urn:orbit:legacy:ReserveSeats', $html);
+        $this->assertStringContainsString('SOAP services', $html);
+    }
+
     public function test_the_documentation_is_also_an_mcp_server(): void
     {
         Gate::define('viewApiDocs', fn ($user = null) => true);

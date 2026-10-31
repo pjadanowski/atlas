@@ -491,7 +491,7 @@
       }
     }
 
-    const headers = { Accept: 'application/json' };
+    const headers = { Accept: panel.dataset.accept || 'application/json' };
     for (const input of form.querySelectorAll('[data-t="header"]')) {
       if (input.value !== '') headers[input.dataset.name] = input.value;
     }
@@ -602,6 +602,35 @@
     return `${(count / 1048576).toFixed(2)} MB`;
   }
 
+  /**
+   * Indents an XML response (SOAP envelopes arrive on one line). Parsed by
+   * DOMParser, emitted as plain text — never inserted as markup. Returns
+   * null when the text is not well-formed XML.
+   */
+  function prettyXml(text) {
+    const doc = new DOMParser().parseFromString(text, 'application/xml');
+    if (doc.querySelector('parsererror')) return null;
+    const lines = [];
+    const attrs = (node) => [...node.attributes].map((a) => ` ${a.name}="${a.value.replace(/"/g, '&quot;')}"`).join('');
+    const escapeText = (value) => value.replace(/&/g, '&amp;').replace(/</g, '&lt;');
+    const walk = (node, depth) => {
+      const pad = '  '.repeat(depth);
+      const children = [...node.childNodes].filter((child) => child.nodeType !== 3 || child.nodeValue.trim());
+      if (children.length === 0) return lines.push(`${pad}<${node.nodeName}${attrs(node)}/>`);
+      if (children.length === 1 && children[0].nodeType === 3) {
+        return lines.push(`${pad}<${node.nodeName}${attrs(node)}>${escapeText(children[0].nodeValue.trim())}</${node.nodeName}>`);
+      }
+      lines.push(`${pad}<${node.nodeName}${attrs(node)}>`);
+      for (const child of children) {
+        if (child.nodeType === 1) walk(child, depth + 1);
+        else if (child.nodeType === 3) lines.push(`${pad}  ${escapeText(child.nodeValue.trim())}`);
+      }
+      lines.push(`${pad}</${node.nodeName}>`);
+    };
+    walk(doc.documentElement, 0);
+    return lines.join('\n');
+  }
+
   function renderResponse(mount, response, text, ms) {
     let parsed;
     let isJson = false;
@@ -637,9 +666,10 @@
       );
       box.append(tools, jsonNode(parsed, null, 0));
     } else {
+      const pretty = /^\s*</.test(text) ? prettyXml(text) : null;
       const tools = el('div', 'tryit-tools');
-      tools.append(copyAction(text));
-      box.append(tools, el('pre', 'tryit-raw', text));
+      tools.append(copyAction(pretty ?? text));
+      box.append(tools, el('pre', 'tryit-raw', pretty ?? text));
     }
 
     const headerList = document.createElement('details');

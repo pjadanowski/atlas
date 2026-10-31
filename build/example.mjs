@@ -67,7 +67,13 @@ export function exampleFromSchema(spec, rawSchema, depth = 0, seenRefs = new Set
   }
 
   if (type === 'string') {
-    return FORMAT_EXAMPLES[schema.format] ?? phpDateExample(schema.format) ?? fitString(nameExample(name, 'string'), schema) ?? 'string';
+    return (
+      FORMAT_EXAMPLES[schema.format] ??
+      phpDateExample(schema.format) ??
+      fitString(nameExample(name, 'string'), schema) ??
+      (schema.pattern ? fitString(sampleFromPattern(schema.pattern), schema) : null) ??
+      'string'
+    );
   }
   if (type === 'integer' || type === 'number') {
     const guess = nameExample(name, type);
@@ -155,6 +161,77 @@ function inRange(value, schema) {
   if (schema.exclusiveMax !== undefined && value >= schema.exclusiveMax) return false;
   if (schema.multipleOf && Math.abs(value / schema.multipleOf - Math.round(value / schema.multipleOf)) > 1e-9) return false;
   return true;
+}
+
+/**
+ * A string matching a simple regular expression — enough for the patterns
+ * schemas actually carry (`[A-Z]{3}`, `\d{5}`, `DE\d{2}[0-9A-Z]{18}`,
+ * `(EUR|USD)`): literals, escapes, character classes, groups with
+ * alternatives, and quantifiers (minimum count). Anything fancier
+ * (lookarounds, backreferences) gives null and the caller falls back.
+ */
+function sampleFromPattern(pattern) {
+  const source = String(pattern).replace(/^\^/, '').replace(/\$$/, '');
+  let index = 0;
+  const CLASS_SAMPLES = { d: '1', w: 'a', s: ' ', D: 'a', W: '-', S: 'a' };
+
+  function sequence() {
+    let out = '';
+    while (index < source.length && source[index] !== ')' && source[index] !== '|') {
+      let atom;
+      const ch = source[index];
+      if (ch === '(') {
+        index += 1;
+        if (source.startsWith('?:', index)) index += 2;
+        else if (source[index] === '?') return null; // lookarounds
+        const options = [];
+        for (;;) {
+          const option = sequence();
+          if (option === null) return null;
+          options.push(option);
+          if (source[index] === '|') index += 1;
+          else break;
+        }
+        if (source[index] !== ')') return null;
+        index += 1;
+        atom = options[0];
+      } else if (ch === '[') {
+        const end = source.indexOf(']', index + 2);
+        if (end === -1) return null;
+        const body = source.slice(index + 1, end);
+        index = end + 1;
+        if (body.startsWith('^')) atom = 'x';
+        else if (body.startsWith('\\')) atom = CLASS_SAMPLES[body[1]] ?? body[1];
+        else atom = body[0];
+      } else if (ch === '\\') {
+        const next = source[index + 1];
+        if (/[1-9bBkpP]/.test(next ?? '')) return null;
+        atom = CLASS_SAMPLES[next] ?? next;
+        index += 2;
+      } else if (ch === '.') {
+        atom = 'a';
+        index += 1;
+      } else if ('*+?{'.includes(ch)) {
+        return null;
+      } else {
+        atom = ch;
+        index += 1;
+      }
+      // Quantifier: the minimum count (at least one for "+").
+      let count = 1;
+      const quantifier = /^(\{(\d+)(,\d*)?\}|[*+?])\??/.exec(source.slice(index));
+      if (quantifier) {
+        index += quantifier[0].length;
+        if (quantifier[2] !== undefined) count = Number(quantifier[2]);
+        else if (quantifier[1] === '*' || quantifier[1] === '?') count = 0;
+      }
+      out += atom.repeat(count);
+    }
+    return out;
+  }
+
+  const result = sequence();
+  return result !== null && index >= source.length ? result : null;
 }
 
 /** "tags" → "tag", so array items get their element's name. */

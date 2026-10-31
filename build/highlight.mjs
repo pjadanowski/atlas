@@ -8,6 +8,7 @@ import { esc } from './text.mjs';
  */
 export function highlight(code, language) {
   if (language === 'json') return highlightJson(code);
+  if (language === 'xml') return highlightXml(code);
   const rules = LANG_RULES[language];
   if (!rules) return esc(code);
   return highlightWithRules(code, rules);
@@ -48,6 +49,22 @@ export function highlightJson(code) {
     }
   }
   return html;
+}
+
+/**
+ * XML: tag names as keywords, attribute names as keys, attribute values as
+ * strings, comments and declarations as comments; text stays plain.
+ */
+export function highlightXml(code) {
+  return code.replace(/<!--[\s\S]*?-->|<\?[\s\S]*?\?>|<\/?[^\s>/]+(?:\s+[^\s=>]+\s*=\s*(?:"[^"]*"|'[^']*'))*\s*\/?>|[^<]+|</g, (token) => {
+    if (token.startsWith('<!--') || token.startsWith('<?')) return span('tok-com', token);
+    if (!token.startsWith('<') || token === '<') return esc(token);
+    const [, open, name, rest] = /^(<\/?)([^\s>/]+)([\s\S]*)$/.exec(token);
+    const attributes = rest.replace(/([^\s=]+)(\s*=\s*)("[^"]*"|'[^']*')|[^]/g, (part, attr, equals, value) =>
+      attr ? `${span('tok-key', attr)}${esc(equals)}${span('tok-str', value)}` : esc(part),
+    );
+    return `${esc(open)}${span('tok-kw', name)}${attributes}`;
+  });
 }
 
 function findStringEnd(code, start) {

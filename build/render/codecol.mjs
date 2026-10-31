@@ -1,5 +1,6 @@
 import { highlight } from '../highlight.mjs';
 import { buildSnippets, SNIPPET_LANGUAGES } from '../snippets.mjs';
+import { buildSoapSnippets, SOAP_SNIPPET_LANGUAGES } from '../soap-snippets.mjs';
 import { esc, slugify } from '../text.mjs';
 import { tryItLauncher } from './tryit.mjs';
 import { copyButton, expandButton, methodBadge, statusClass } from './ui.mjs';
@@ -19,8 +20,9 @@ export function endpointCodeColumn(model, endpoint) {
 const MAX_TABS = 14;
 
 export function requestPanel(model, endpoint, prefix = 'req') {
-  const snippets = buildSnippets(endpoint, model.baseUrl);
   const groupId = `${prefix}-${endpoint.slug}`;
+  if (endpoint.soap) return soapRequestPanel(endpoint, groupId);
+  const snippets = buildSnippets(endpoint, model.baseUrl);
   // Hand-written x-codeSamples first. Their "-x-<n>" ids never end in a
   // generated language id, so the remembered-language lookup ignores them.
   const custom = (endpoint.codeSamples ?? []).map((sample, index) => ({
@@ -36,8 +38,26 @@ export function requestPanel(model, endpoint, prefix = 'req') {
   const tabs = [...custom, ...generated]
     .slice(0, MAX_TABS)
     .map((tab, index) => ({ ...tab, checked: index === 0 }));
-  const title = `${methodBadge(endpoint.method)} <span class="code-panel-path">${esc(shortPath(endpoint.path))}</span>`;
+  const title = `${methodBadge(endpoint.badge ?? endpoint.method)} <span class="code-panel-path">${esc(shortPath(endpoint.path))}</span>`;
   return codePanel({ groupId, title, tabs, ariaLabel: 'Request example' });
+}
+
+function soapRequestPanel(endpoint, groupId) {
+  const snippets = buildSoapSnippets(endpoint);
+  const tabs = SOAP_SNIPPET_LANGUAGES.map((lang, index) => ({
+    id: `${groupId}-soap-${lang.id}`,
+    label: lang.label,
+    checked: index === 0,
+    code: lang.id === 'http' ? highlightRawHttp(snippets.http) : highlight(snippets[lang.id], lang.language),
+  }));
+  const title = `${methodBadge('SOAP')} <span class="code-panel-path">${esc(endpoint.soap.operation)}</span>`;
+  return codePanel({ groupId, title, tabs, ariaLabel: 'Request example' });
+}
+
+/** Raw HTTP: plain request line and headers, the XML body highlighted. */
+function highlightRawHttp(text) {
+  const split = text.indexOf('\n\n');
+  return `${esc(text.slice(0, split))}\n\n${highlight(text.slice(split + 2), 'xml')}`;
 }
 
 /** x-codeSamples `lang` → highlighter language; unknown ones render as plain text. */
@@ -72,7 +92,10 @@ export function responsePanel(endpoint, prefix = 'res') {
         id: `${groupId}-${slugify(response.status)}${examples.length > 1 ? `-${index}` : ''}`,
         label: examples.length > 1 ? `${response.status} · ${example.summary}` : response.status,
         labelClass: `tab-status tab-status--${statusClass(response.status)}`,
-        code: isJson || typeof value !== 'string' ? highlight(JSON.stringify(value, null, 2), 'json') : esc(value),
+        code:
+          isJson || typeof value !== 'string'
+            ? highlight(JSON.stringify(value, null, 2), 'json')
+            : highlight(value, /xml/.test(content.contentType ?? '') ? 'xml' : 'text'),
       });
     });
   }

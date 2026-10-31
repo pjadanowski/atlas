@@ -3,8 +3,8 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "build": "node build/index.mjs --spec examples/demo/openapi.json",
-    "watch": "node --watch-path=examples --watch-path=assets --watch-path=build build/index.mjs --spec examples/demo/openapi.json",
+    "build": "node build/index.mjs --spec examples/demo/openapi.json --wsdl examples/demo/soap/orbit-legacy.wsdl",
+    "watch": "node --watch-path=examples --watch-path=assets --watch-path=build build/index.mjs --spec examples/demo/openapi.json --wsdl examples/demo/soap/orbit-legacy.wsdl",
     "preview": "node build/serve.mjs",
     "test": "node --test tests/node/*.test.mjs",
     "test:e2e": "npm run build && node --test tests/e2e/*.test.mjs"

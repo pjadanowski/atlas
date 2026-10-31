@@ -17,7 +17,7 @@ export function llmsIndex(model) {
   ];
   for (const endpoint of model.endpoints) {
     const summary = plain(endpoint.description).slice(0, 140);
-    lines.push(`- [${endpoint.method} ${endpoint.title}](${url(endpoint.href)}index.md)${summary ? `: ${summary}` : ''}`);
+    lines.push(`- [${endpoint.badge ?? endpoint.method} ${endpoint.title}](${url(endpoint.href)}index.md)${summary ? `: ${summary}` : ''}`);
   }
   if (model.models.length) {
     lines.push('', '## Models', '', `- ${model.models.length} schemas are browsable at ${url('/models/')}`);
@@ -26,13 +26,21 @@ export function llmsIndex(model) {
 }
 
 export function endpointMarkdown(model, endpoint) {
-  const lines = [
-    `# ${endpoint.title}`,
-    '',
-    `\`${endpoint.method} ${endpoint.path}\``,
-    '',
-    endpoint.requiresAuth ? 'Authentication: Bearer token required.' : 'Authentication: none (public).',
-  ];
+  const lines = [`# ${endpoint.title}`, ''];
+  if (endpoint.soap) {
+    const soap = endpoint.soap;
+    lines.push(
+      `SOAP ${soap.version} operation \`${soap.operation}\` of service \`${soap.service}\` (${soap.style}/literal).`,
+      '',
+      `- Endpoint: \`POST ${soap.address}\``,
+      soap.version === '1.1'
+        ? `- Headers: \`Content-Type: text/xml; charset=utf-8\`, \`SOAPAction: "${soap.action}"\``
+        : `- Header: \`Content-Type: application/soap+xml; charset=utf-8; action="${soap.action}"\``,
+      ...soap.alternatives.map((alternative) => `- Also on SOAP ${alternative.version}: \`${alternative.address}\``),
+    );
+  } else {
+    lines.push(`\`${endpoint.method} ${endpoint.path}\``, '', authenticationLine(endpoint));
+  }
   const description = plain(endpoint.description);
   if (description) lines.push('', description);
 
@@ -54,7 +62,7 @@ export function endpointMarkdown(model, endpoint) {
   if (endpoint.requestBody) {
     lines.push('', `## Request body (${endpoint.requestBody.contentType})`, '');
     if (endpoint.requestBody.example !== null && endpoint.requestBody.example !== undefined) {
-      lines.push('```json', JSON.stringify(endpoint.requestBody.example, null, 2), '```');
+      lines.push(...fenced(endpoint.requestBody.example, endpoint.requestBody.contentType));
     }
   }
 
@@ -63,11 +71,29 @@ export function endpointMarkdown(model, endpoint) {
     for (const response of endpoint.responses) {
       lines.push('', `### ${response.status}${response.description ? ` — ${plain(response.description)}` : ''}`);
       if (response.example !== null && response.example !== undefined) {
-        lines.push('', '```json', JSON.stringify(response.example, null, 2), '```');
+        lines.push('', ...fenced(response.example, response.contentType));
       }
     }
   }
   return `${lines.join('\n')}\n`;
+}
+
+/** JSON examples pretty-printed; XML and other text verbatim, with a matching fence. */
+function fenced(value, contentType = '') {
+  if (typeof value === 'string' && !/json/.test(contentType ?? '')) {
+    return [`\`\`\`${/xml/.test(contentType ?? '') ? 'xml' : 'text'}`, value, '```'];
+  }
+  return ['```json', JSON.stringify(value, null, 2), '```'];
+}
+
+/** Which credentials the endpoint takes, from its security requirements. */
+function authenticationLine(endpoint) {
+  const alternatives = (endpoint.security ?? []).filter((alternative) => alternative.length > 0);
+  if (alternatives.length === 0) return 'Authentication: none (public).';
+  const options = alternatives.map((alternative) =>
+    alternative.map((entry) => `${entry.scheme.label}${entry.scopes.length ? ` (scopes: ${entry.scopes.join(', ')})` : ''}`).join(' + '),
+  );
+  return `Authentication${endpoint.authOptional ? ' (optional)' : ''}: ${options.join(' or ')}.`;
 }
 
 /** Markdown twin of a model page: fields, types, example — what an AI assistant needs. */

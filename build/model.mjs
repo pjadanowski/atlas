@@ -66,7 +66,7 @@ function normalizeModels(spec) {
 
 function normalizeEndpoint(spec, method, path, operation, sharedParams, auth, tags, extra) {
   const id = operation.operationId ?? slugify(`${method}-${path}`);
-  const tagName = operation.tags?.[0] ?? 'Other';
+  const tagName = operation.tags?.[0] ?? untaggedName(spec, path);
   const tag = tags.get(tagName) ?? { name: tagName, displayName: tagName, slug: slugify(tagName) };
   const params = { path: [], query: [], header: [], cookie: [] };
   // Operation parameters override path-level ones with the same name + location.
@@ -105,7 +105,23 @@ function normalizeEndpoint(spec, method, path, operation, sharedParams, auth, ta
     responses: normalizeResponses(spec, operation.responses),
     callbacks: normalizeCallbacks(spec, operation.callbacks, auth, tags),
     externalDocs: operation.externalDocs ?? null,
+    // Operation-level servers override the document's (OpenAPI allows it;
+    // SOAP operations use it for their port's endpoint address).
+    servers: operation.servers?.length ? normalizeServers({ servers: operation.servers }) : null,
+    soap: operation['x-soap'] ?? null,
+    // The operation's arguments as plain data, for SOAP toolkits that build
+    // the envelope themselves (PHP SoapClient, zeep).
+    soapArguments: operation['x-soap'] ? soapArguments(spec, operation) : null,
+    // Label shown where the HTTP method would be: SOAP operations are all
+    // POSTs on the wire, but "POST" says nothing useful about them.
+    badge: operation['x-soap'] ? 'SOAP' : method.toUpperCase(),
   };
+}
+
+function soapArguments(spec, operation) {
+  const media = Object.values(operation.requestBody?.content ?? {})[0];
+  const value = media?.schema ? exampleFromSchema(spec, media.schema, 0, new Set(), 'request') : null;
+  return value && typeof value === 'object' ? value : {};
 }
 
 function normalizeCodeSamples(raw) {
@@ -373,6 +389,31 @@ function normalizeServers(spec) {
   });
 }
 
+// Untagged operations go to "Other" — unless there are this many, in which
+// case one bucket is no navigation at all (Stripe's spec has no tags; 600
+// operations under "Other"). Then they are grouped by their first
+// meaningful path segment: /v1/charges/{id} → "Charges".
+const UNTAGGED_GROUPING_AFTER = 30;
+const untaggedCounts = new WeakMap();
+
+function untaggedName(spec, path) {
+  if (!untaggedCounts.has(spec)) {
+    let count = 0;
+    for (const pathItem of Object.values(spec.paths ?? {})) {
+      const item = deref(spec, pathItem).node ?? {};
+      count += HTTP_METHODS.filter((method) => item[method] && !item[method].tags?.length).length;
+    }
+    untaggedCounts.set(spec, count);
+  }
+  if (untaggedCounts.get(spec) <= UNTAGGED_GROUPING_AFTER) return 'Other';
+  const segment = path
+    .split('/')
+    .find((part) => part && !part.startsWith('{') && !/^(v\d+(\.\d+)*|api|rest)$/i.test(part));
+  if (!segment) return 'Other';
+  const words = segment.replace(/[-_.]+/g, ' ').replace(/([a-z])([A-Z])/g, '$1 $2').trim();
+  return words.charAt(0).toUpperCase() + words.slice(1);
+}
+
 /** Declared tags (description, x-displayName) by name; undeclared ones are added on first use. */
 function normalizeTags(spec) {
   const tags = new Map();
@@ -385,9 +426,10 @@ function normalizeTags(spec) {
       slug: slugify(tag.name),
     });
   }
-  for (const pathItem of Object.values(spec.paths ?? {})) {
+  for (const [path, pathItem] of Object.entries(spec.paths ?? {})) {
     for (const method of HTTP_METHODS) {
-      const name = deref(spec, pathItem).node?.[method]?.tags?.[0] ?? (deref(spec, pathItem).node?.[method] ? 'Other' : null);
+      const operation = deref(spec, pathItem).node?.[method];
+      const name = operation ? operation.tags?.[0] ?? untaggedName(spec, path) : null;
       if (name && !tags.has(name)) {
         tags.set(name, { name, displayName: name, description: '', externalDocs: null, slug: slugify(name) });
       }
@@ -420,9 +462,12 @@ function buildNav(spec, endpoints, tags) {
 
   const groups = Array.isArray(spec['x-tagGroups']) ? spec['x-tagGroups'] : [];
   const sections = groups.map((group) => ({ name: group.name, tags: (group.tags ?? []).filter((name) => byTag.has(name)) }));
-  const grouped = new Set(sections.flatMap((section) => section.tags));
+  // SOAP services (build/wsdl.mjs) get a section of their own, last.
+  const soapTags = (spec['x-atlas-soap-tags'] ?? []).filter((name) => byTag.has(name));
+  const grouped = new Set([...sections.flatMap((section) => section.tags), ...soapTags]);
   const rest = allTags.filter((name) => !grouped.has(name));
   if (rest.length > 0) sections.push({ name: sections.length ? 'Other' : 'API Reference', tags: rest });
+  if (soapTags.length > 0) sections.push({ name: 'SOAP services', tags: soapTags });
 
   return sections
     .map((section) => ({ name: section.name, nodes: tagTree(section.tags, byTag, tags) }))

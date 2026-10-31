@@ -84,4 +84,12 @@ return [
      * `php artisan atlas:build` on deploy instead.
      */
     'auto_build' => env('ATLAS_AUTO_BUILD'),
+
+    /*
+     * SOAP services to document next to the Scramble API: WSDL 1.1 files
+     * (absolute paths) or URLs. Imported XSDs are followed. Each service gets
+     * its own sidebar section; operations get envelopes, snippets and try-it.
+     * e.g. [resource_path('soap/booking.wsdl'), 'https://partner.example/service?wsdl']
+     */
+    'wsdl' => [],
 ];

@@ -1,0 +1,94 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<wsdl:definitions xmlns:wsdl="http://schemas.xmlsoap.org/wsdl/"
+                  xmlns:soap="http://schemas.xmlsoap.org/wsdl/soap/"
+                  xmlns:soap12="http://schemas.xmlsoap.org/wsdl/soap12/"
+                  xmlns:xsd="http://www.w3.org/2001/XMLSchema"
+                  xmlns:ob="urn:orbit:legacy:types"
+                  xmlns:tns="urn:orbit:legacy:service"
+                  targetNamespace="urn:orbit:legacy:service">
+  <wsdl:documentation>The Orbit Legacy Booking service — the SOAP interface travel agencies used before the REST API, still supported for existing partners (fictional).</wsdl:documentation>
+
+  <wsdl:types>
+    <xsd:schema targetNamespace="urn:orbit:legacy:service">
+      <xsd:import namespace="urn:orbit:legacy:types" schemaLocation="orbit-legacy-types.xsd"/>
+    </xsd:schema>
+  </wsdl:types>
+
+  <wsdl:message name="ReserveSeatsIn"><wsdl:part name="parameters" element="ob:ReserveSeats"/></wsdl:message>
+  <wsdl:message name="ReserveSeatsOut"><wsdl:part name="parameters" element="ob:ReserveSeatsResponse"/></wsdl:message>
+  <wsdl:message name="GetReservationIn"><wsdl:part name="parameters" element="ob:GetReservation"/></wsdl:message>
+  <wsdl:message name="GetReservationOut"><wsdl:part name="parameters" element="ob:GetReservationResponse"/></wsdl:message>
+  <wsdl:message name="CancelReservationIn"><wsdl:part name="parameters" element="ob:CancelReservation"/></wsdl:message>
+  <wsdl:message name="CancelReservationOut"><wsdl:part name="parameters" element="ob:CancelReservationResponse"/></wsdl:message>
+  <wsdl:message name="BookingFaultMessage"><wsdl:part name="fault" element="ob:BookingFault"/></wsdl:message>
+
+  <wsdl:portType name="LegacyBookingPortType">
+    <wsdl:operation name="ReserveSeats">
+      <wsdl:documentation>Holds seats on a departure for 15 minutes. Travellers are sent as `Adult` or `Child` via `xsi:type`.</wsdl:documentation>
+      <wsdl:input message="tns:ReserveSeatsIn"/>
+      <wsdl:output message="tns:ReserveSeatsOut"/>
+      <wsdl:fault name="BookingFault" message="tns:BookingFaultMessage"/>
+    </wsdl:operation>
+    <wsdl:operation name="GetReservation">
+      <wsdl:documentation>Looks a reservation up by its reference.</wsdl:documentation>
+      <wsdl:input message="tns:GetReservationIn"/>
+      <wsdl:output message="tns:GetReservationOut"/>
+    </wsdl:operation>
+    <wsdl:operation name="CancelReservation">
+      <wsdl:documentation>Cancels a held or confirmed reservation and returns the refund.</wsdl:documentation>
+      <wsdl:input message="tns:CancelReservationIn"/>
+      <wsdl:output message="tns:CancelReservationOut"/>
+      <wsdl:fault name="BookingFault" message="tns:BookingFaultMessage"/>
+    </wsdl:operation>
+  </wsdl:portType>
+
+  <wsdl:binding name="LegacyBookingSoap" type="tns:LegacyBookingPortType">
+    <soap:binding style="document" transport="http://schemas.xmlsoap.org/soap/http"/>
+    <wsdl:operation name="ReserveSeats">
+      <soap:operation soapAction="urn:orbit:legacy:ReserveSeats"/>
+      <wsdl:input><soap:body use="literal"/></wsdl:input>
+      <wsdl:output><soap:body use="literal"/></wsdl:output>
+      <wsdl:fault name="BookingFault"><soap:fault name="BookingFault" use="literal"/></wsdl:fault>
+    </wsdl:operation>
+    <wsdl:operation name="GetReservation">
+      <soap:operation soapAction="urn:orbit:legacy:GetReservation"/>
+      <wsdl:input><soap:body use="literal"/></wsdl:input>
+      <wsdl:output><soap:body use="literal"/></wsdl:output>
+    </wsdl:operation>
+    <wsdl:operation name="CancelReservation">
+      <soap:operation soapAction="urn:orbit:legacy:CancelReservation"/>
+      <wsdl:input><soap:body use="literal"/></wsdl:input>
+      <wsdl:output><soap:body use="literal"/></wsdl:output>
+      <wsdl:fault name="BookingFault"><soap:fault name="BookingFault" use="literal"/></wsdl:fault>
+    </wsdl:operation>
+  </wsdl:binding>
+
+  <wsdl:binding name="LegacyBookingSoap12" type="tns:LegacyBookingPortType">
+    <soap12:binding style="document" transport="http://schemas.xmlsoap.org/soap/http"/>
+    <wsdl:operation name="ReserveSeats">
+      <soap12:operation soapAction="urn:orbit:legacy:ReserveSeats"/>
+      <wsdl:input><soap12:body use="literal"/></wsdl:input>
+      <wsdl:output><soap12:body use="literal"/></wsdl:output>
+    </wsdl:operation>
+    <wsdl:operation name="GetReservation">
+      <soap12:operation soapAction="urn:orbit:legacy:GetReservation"/>
+      <wsdl:input><soap12:body use="literal"/></wsdl:input>
+      <wsdl:output><soap12:body use="literal"/></wsdl:output>
+    </wsdl:operation>
+    <wsdl:operation name="CancelReservation">
+      <soap12:operation soapAction="urn:orbit:legacy:CancelReservation"/>
+      <wsdl:input><soap12:body use="literal"/></wsdl:input>
+      <wsdl:output><soap12:body use="literal"/></wsdl:output>
+    </wsdl:operation>
+  </wsdl:binding>
+
+  <wsdl:service name="LegacyBooking">
+    <wsdl:documentation>Partner-only SOAP endpoint for agencies on the 2079 integration contract.</wsdl:documentation>
+    <wsdl:port name="LegacyBookingSoap" binding="tns:LegacyBookingSoap">
+      <soap:address location="https://legacy.orbit.example/soap/booking"/>
+    </wsdl:port>
+    <wsdl:port name="LegacyBookingSoap12" binding="tns:LegacyBookingSoap12">
+      <soap12:address location="https://legacy.orbit.example/soap12/booking"/>
+    </wsdl:port>
+  </wsdl:service>
+</wsdl:definitions>
