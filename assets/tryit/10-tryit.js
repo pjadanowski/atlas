@@ -5,7 +5,6 @@
 (() => {
   'use strict';
 
-  const STORE_TOKEN = 'tryit:token';
   const STORE_SERVER = 'tryit:server';
   const STORE_CUSTOM_SERVERS = 'tryit:servers';
   const JSON_TOKEN = /("(?:[^"\\]|\\.)*")(\s*:)?|\b(true|false|null)\b|-?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?/g;
@@ -64,7 +63,34 @@
       }
     }
 
+    // Templated servers: substitute {variables} from their controls.
+    const varsFor = (template) => [...panel.querySelectorAll('[data-server-vars]')].find((box) => box.dataset.serverVars === template);
+    const applyTemplate = () => {
+      const option = select.selectedOptions[0];
+      for (const box of panel.querySelectorAll('[data-server-vars]')) box.hidden = true;
+      const template = option?.dataset.template;
+      if (!template) return false;
+      const box = varsFor(template);
+      if (box) box.hidden = false;
+      let url = template;
+      for (const control of box?.querySelectorAll('[data-server-var]') ?? []) {
+        url = url.replaceAll(`{${control.dataset.serverVar}}`, control.value);
+      }
+      input.value = url.replace(/\/$/, '');
+      return true;
+    };
+    for (const control of panel.querySelectorAll('[data-server-var]')) {
+      control.addEventListener('input', applyTemplate);
+      control.addEventListener('change', applyTemplate);
+    }
+    if (!saved) applyTemplate();
+
     select.addEventListener('change', () => {
+      if (applyTemplate()) {
+        input.hidden = true;
+        persist(STORE_SERVER, select.value);
+        return;
+      }
       if (select.value === '__custom') {
         input.hidden = false;
         input.value = '';
@@ -469,14 +495,39 @@
     for (const input of form.querySelectorAll('[data-t="header"]')) {
       if (input.value !== '') headers[input.dataset.name] = input.value;
     }
-    const token = stored(STORE_TOKEN);
-    if (token) headers.Authorization = `Bearer ${token}`;
+    // Credentials from the Authorize dialog, for the first security
+    // alternative of this endpoint that is fully configured (see app.js).
+    const authorized = { headers, query, credentials: undefined };
+    let security = [];
+    try {
+      security = JSON.parse(panel.dataset.security || '[]');
+    } catch {
+      security = [];
+    }
+    window.atlasAuth?.apply(security, authorized);
 
     let body = null;
     const json = form.querySelector('[data-t="json"]');
     const multipart = form.querySelectorAll('[data-t="mp"]');
-    if (json && json.value.trim() && panel.dataset.method !== 'GET') {
-      headers['Content-Type'] = 'application/json';
+    const contentType = json?.dataset.contentType || 'application/json';
+    if (json && json.value.trim() && panel.dataset.method !== 'GET' && /x-www-form-urlencoded/.test(contentType)) {
+      // Edited as JSON for convenience, sent as a form.
+      headers['Content-Type'] = contentType;
+      try {
+        const fields = JSON.parse(json.value);
+        body = new URLSearchParams();
+        for (const [key, value] of Object.entries(fields)) {
+          for (const item of [value].flat()) body.append(key, typeof item === 'object' ? JSON.stringify(item) : String(item));
+        }
+        body = body.toString();
+      } catch {
+        body = json.value;
+      }
+    } else if (json && json.value.trim() && panel.dataset.method !== 'GET' && !/json/.test(contentType)) {
+      headers['Content-Type'] = contentType;
+      body = json.value;
+    } else if (json && json.value.trim() && panel.dataset.method !== 'GET') {
+      headers['Content-Type'] = contentType;
       body = json.value;
       try {
         body = JSON.stringify(JSON.parse(json.value));
@@ -497,7 +548,7 @@
 
     const base = value('[data-t="server"]').replace(/\/$/, '');
     const qs = query.toString();
-    return { method: panel.dataset.method, url: `${base}${path}${qs ? `?${qs}` : ''}`, headers, body };
+    return { method: panel.dataset.method, url: `${base}${path}${qs ? `?${qs}` : ''}`, headers, body, credentials: authorized.credentials };
   }
 
   // ---- Send + response rendering ----
@@ -518,6 +569,7 @@
       method: request.method,
       headers: request.headers,
       body: request.body,
+      ...(request.credentials ? { credentials: request.credentials } : {}),
     })
       .then((response) =>
         response.text().then((text) => {

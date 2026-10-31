@@ -28,7 +28,7 @@ export function tryItDrawer(model, endpoint) {
   const isMultipart = endpoint.requestBody?.contentType.includes('multipart') ?? false;
   const sections = [
     serverField(model),
-    endpoint.requiresAuth ? authRow() : '',
+    endpoint.security.some((alternative) => alternative.length > 0) ? authRow(endpoint) : '',
     paramSection('Path', endpoint.params.path.map((param) => paramField(param, 'path'))),
     paramSection('Query', endpoint.params.query.map((param) => paramField(param, 'query'))),
     paramSection('Headers', endpoint.params.header.map((param) => paramField(param, 'header'))),
@@ -36,7 +36,10 @@ export function tryItDrawer(model, endpoint) {
     copyRow(),
     historySection(),
   ].filter(Boolean);
-  return `<dialog class="tryit-drawer" data-tryit data-method="${esc(endpoint.method)}" data-path="${esc(endpoint.path)}" aria-label="Try it – ${esc(endpoint.method)} ${esc(endpoint.path)}">
+  // Alternatives (OR) of scheme ids (AND) — the runtime picks the first one
+  // whose credentials are all configured.
+  const security = JSON.stringify(endpoint.security.map((alternative) => alternative.map((entry) => entry.id)));
+  return `<dialog class="tryit-drawer" data-tryit data-method="${esc(endpoint.method)}" data-path="${esc(endpoint.path)}" data-security="${esc(security)}" aria-label="Try it – ${esc(endpoint.method)} ${esc(endpoint.path)}">
   <form class="tryit-form">
     <header class="tryit-head">
       <div class="tryit-head-title">${methodBadge(endpoint.method)}<code class="tryit-head-path">${esc(endpoint.path)}</code></div>
@@ -69,27 +72,51 @@ ${sections.join('\n')}
  * of truth the request is built from.
  */
 function serverField(model) {
-  const servers = model.servers.length ? model.servers : [{ url: model.baseUrl }];
+  const servers = model.servers.length ? model.servers : [{ url: model.baseUrl, resolved: model.baseUrl, variables: [] }];
   const options = servers
     .map((server) => {
       const label = server.description ? `${server.description} — ${server.url}` : server.url;
-      return `<option value="${esc(server.url)}">${esc(label)}</option>`;
+      const template = server.variables?.length ? ` data-template="${esc(server.url)}"` : '';
+      return `<option value="${esc(server.resolved ?? server.url)}"${template}>${esc(label)}</option>`;
     })
     .join('');
+  // Server variables ({region}, {basePath}): one control each, shown while
+  // a templated server is selected; the runtime substitutes them.
+  const variables = servers
+    .map((server, index) => {
+      if (!server.variables?.length) return '';
+      const controls = server.variables
+        .map((variable) => {
+          const control = variable.enum.length
+            ? `<select class="tryit-input" data-server-var="${esc(variable.name)}">${variable.enum
+                .map((value) => `<option${value === variable.default ? ' selected' : ''}>${esc(value)}</option>`)
+                .join('')}</select>`
+            : `<input class="tryit-input" type="text" data-server-var="${esc(variable.name)}" value="${esc(variable.default)}" spellcheck="false">`;
+          return `<label class="tryit-servervar" title="${esc(variable.description)}"><span>{${esc(variable.name)}}</span>${control}</label>`;
+        })
+        .join('');
+      return `<div class="tryit-servervars" data-server-vars="${esc(server.url)}" hidden>${controls}</div>`;
+    })
+    .join('');
+  const first = servers[0].resolved ?? servers[0].url;
   const control = `<div class="tryit-server">
           <select class="tryit-input" data-server-select>${options}<option value="__custom">Custom URL…</option></select>
-          <input class="tryit-input" type="text" data-t="server" value="${esc(servers[0].url)}" placeholder="http://localhost:8000" spellcheck="false" autocomplete="off" hidden>
+          <input class="tryit-input" type="text" data-t="server" value="${esc(first)}" placeholder="http://localhost:8000" spellcheck="false" autocomplete="off" hidden>
+        </div>${variables}`;
+  // A <div>, not field()'s <label>: the variable controls carry their own labels.
+  return `        <div class="tryit-field">
+          <span class="tryit-label">Server</span>
+          ${control}
         </div>`;
-  return field('Server', control);
 }
 
 /**
  * Authorization is configured once, globally (topbar → Authorize). The drawer
  * only shows the current state and a shortcut to change it.
  */
-function authRow() {
+function authRow(endpoint) {
   return `      <div class="tryit-authrow">
-        <span class="tryit-label">Authorization<em class="tryit-req">required</em></span>
+        <span class="tryit-label">Authorization${endpoint.authOptional ? '' : '<em class="tryit-req">required</em>'}</span>
         <span class="tryit-authstate" data-auth-state>Not set</span>
         <button type="button" class="tryit-authedit" data-auth-open>Change</button>
       </div>`;
@@ -192,14 +219,22 @@ function bodySection(endpoint, isMultipart) {
     });
     return paramSection('Body · form-data', fields);
   }
-  const example = body.example !== null && body.example !== undefined ? JSON.stringify(body.example, null, 2) : '{}';
+  const isJson = /json/.test(body.contentType);
+  const isForm = /x-www-form-urlencoded/.test(body.contentType);
+  const example =
+    body.example === null || body.example === undefined
+      ? isJson || isForm ? '{}' : ''
+      : typeof body.example === 'string' && !isJson
+        ? body.example
+        : JSON.stringify(body.example, null, 2);
   const rows = Math.max(6, Math.min(example.split('\n').length + 1, 20));
+  const title = isJson ? 'Body · JSON' : isForm ? 'Body · form (edited as JSON)' : `Body · ${body.contentType}`;
   // Syntax-highlighted editor: a highlighted <pre> sits behind a transparent
   // textarea; the runtime re-highlights on input and keeps scroll in sync.
-  return paramSection('Body · JSON', [
+  return paramSection(title, [
     `        <div class="tryit-jsonwrap">
-          <pre class="tryit-json-hl" aria-hidden="true"><code>${highlight(example, 'json')}\n</code></pre>
-          <textarea class="tryit-input tryit-json" data-t="json" rows="${rows}" spellcheck="false" autocomplete="off">${esc(example)}</textarea>
+          <pre class="tryit-json-hl" aria-hidden="true"><code>${isJson || isForm ? highlight(example, 'json') : esc(example)}\n</code></pre>
+          <textarea class="tryit-input tryit-json" data-t="json" data-content-type="${esc(body.contentType)}" rows="${rows}" spellcheck="false" autocomplete="off">${esc(example)}</textarea>
         </div>`,
   ]);
 }

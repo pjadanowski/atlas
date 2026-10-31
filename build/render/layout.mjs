@@ -1,4 +1,4 @@
-import { esc, markdownHeadings } from '../text.mjs';
+import { esc, markdownHeadings, mdInline } from '../text.mjs';
 import { url } from '../url.mjs';
 import { highlight } from '../highlight.mjs';
 import { mcpClientSnippets } from '../mcp.mjs';
@@ -35,7 +35,7 @@ export function pageShell({ model, assets, title, activeHref, content, codeColum
 })();
 </script>
 </head>
-<body data-tryit-js="${esc(assets.tryitJs)}" data-tryit-css="${esc(assets.tryitCss)}" data-search-js="${esc(assets.searchJs)}" data-search-index="${esc(assets.searchIndex)}">
+<body data-auth-schemes="${esc(JSON.stringify(model.auth.map(({ id, type, scheme, location, parameterName }) => ({ id, type, scheme, location, name: parameterName }))))}" data-tryit-js="${esc(assets.tryitJs)}" data-tryit-css="${esc(assets.tryitCss)}" data-search-js="${esc(assets.searchJs)}" data-search-index="${esc(assets.searchIndex)}">
 <a class="skip-link" href="#content">Skip to content</a>
 <header class="topbar">
   <a class="topbar-brand" href="${esc(url('/'))}">
@@ -170,13 +170,16 @@ function authButton() {
 }
 
 /**
- * Global authorization: one bearer token, stored in localStorage, applied to
- * every try-it request. Rendered on every page so it can be configured before
- * opening any endpoint.
+ * Global authorization: one section per security scheme in the spec, values
+ * stored in localStorage and applied by the try-it console to every request
+ * whose security requirements they satisfy. Rendered on every page so it can
+ * be configured before opening any endpoint.
  */
 function authDialog(model) {
-  const scheme = model.auth[0];
-  const label = scheme?.bearerFormat ? `Bearer token (${scheme.bearerFormat})` : 'Bearer token';
+  const sections = model.auth
+    .filter((scheme) => scheme.type !== 'mutualTLS')
+    .map((scheme, index) => authSection(scheme, index === 0))
+    .join('\n');
   return `<dialog class="auth-dialog" data-auth-dialog aria-label="API authorization">
   <form method="dialog" class="auth-box">
     <header class="auth-head">
@@ -185,23 +188,109 @@ function authDialog(model) {
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M18 6 6 18M6 6l12 12"/></svg>
       </button>
     </header>
-    <p class="auth-hint">Sent as <code>Authorization: Bearer …</code> with every try-it request. Stored only in this browser.</p>
-    <div class="tryit-field">
-      <label class="tryit-label" for="auth-token">${esc(label)}</label>
-      <div class="auth-tokenwrap">
-        <input class="tryit-input" type="password" id="auth-token" data-auth-token placeholder="API_TOKEN" autocomplete="off" spellcheck="false">
-        <button type="button" class="auth-eye" data-auth-eye aria-label="Show token" aria-pressed="false">
-          <svg class="auth-eye-show" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7Z"/><circle cx="12" cy="12" r="3"/></svg>
-          <svg class="auth-eye-hide" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9.9 4.24A9.12 9.12 0 0 1 12 4c6.5 0 10 8 10 8a13.16 13.16 0 0 1-1.67 2.68M6.61 6.61A13.53 13.53 0 0 0 2 12s3.5 8 10 8a9.74 9.74 0 0 0 5.39-1.61M2 2l20 20"/><path d="M14.12 14.12a3 3 0 1 1-4.24-4.24"/></svg>
-        </button>
-      </div>
-    </div>
+    <p class="auth-hint">Credentials are applied to every try-it request whose endpoint accepts them. Stored only in this browser.</p>
+${sections}
     <footer class="auth-foot">
-      <button type="button" class="auth-clear" data-auth-clear>Clear</button>
+      <button type="button" class="auth-clear" data-auth-clear>Clear all</button>
       <button type="submit" class="tryit-send">Done</button>
     </footer>
   </form>
 </dialog>`;
+}
+
+function authSection(scheme, first) {
+  const id = esc(scheme.id);
+  const secret = (fieldName, label, placeholder) => `      <div class="tryit-field">
+        <label class="tryit-label" for="auth-${id}-${fieldName}">${esc(label)}</label>
+        <div class="auth-tokenwrap">
+          <input class="tryit-input" type="password" id="auth-${id}-${fieldName}" data-auth-scheme="${id}" data-auth-field="${fieldName}" placeholder="${esc(placeholder)}" autocomplete="off" spellcheck="false">
+          ${eyeButton()}
+        </div>
+      </div>`;
+  const plain = (fieldName, label, placeholder) => `      <div class="tryit-field">
+        <label class="tryit-label" for="auth-${id}-${fieldName}">${esc(label)}</label>
+        <input class="tryit-input" type="text" id="auth-${id}-${fieldName}" data-auth-scheme="${id}" data-auth-field="${fieldName}" placeholder="${esc(placeholder)}" autocomplete="off" spellcheck="false">
+      </div>`;
+
+  let fields;
+  let hint;
+  if (scheme.type === 'http' && scheme.scheme === 'basic') {
+    hint = 'Sent as <code>Authorization: Basic …</code>';
+    fields = [plain('user', 'Username', 'username'), secret('pass', 'Password', 'password')].join('\n');
+  } else if (scheme.type === 'apiKey') {
+    const where = { header: 'header', query: 'query parameter', cookie: 'cookie' }[scheme.location] ?? scheme.location;
+    hint = `Sent as the <code>${esc(scheme.parameterName)}</code> ${esc(where)}`;
+    if (scheme.location === 'cookie') hint += ' — browsers only send cookies set by the API itself, so this works when the docs share its domain';
+    fields = secret('key', 'API key', scheme.parameterName ?? 'key');
+  } else if (scheme.type === 'oauth2') {
+    hint = 'Sent as <code>Authorization: Bearer …</code>';
+    fields = [secret('token', 'Access token', 'paste a token or request one below'), oauthFlows(scheme)].filter(Boolean).join('\n');
+  } else if (scheme.type === 'openIdConnect') {
+    hint = `Sent as <code>Authorization: Bearer …</code>${scheme.openIdConnectUrl ? ` · <a href="${esc(scheme.openIdConnectUrl)}" target="_blank" rel="noopener">discovery document</a>` : ''}`;
+    fields = secret('token', 'ID / access token', 'token');
+  } else {
+    hint = 'Sent as <code>Authorization: Bearer …</code>';
+    fields = secret('token', scheme.label, 'API_TOKEN');
+  }
+  return `    <details class="auth-scheme" data-auth-section="${id}"${first ? ' open' : ''}>
+      <summary class="auth-scheme-head">
+        <span class="auth-scheme-name">${esc(scheme.label)}</span>
+        <code class="auth-scheme-id">${id}</code>
+        <span class="auth-scheme-state" data-auth-section-state></span>
+      </summary>
+      <div class="auth-scheme-body">
+      <p class="auth-hint auth-hint--scheme">${hint}</p>
+      ${scheme.description ? `<p class="auth-hint auth-hint--scheme">${mdInline(scheme.description)}</p>` : ''}
+${fields}
+      </div>
+    </details>`;
+}
+
+/**
+ * OAuth 2.0: the client-credentials and password grants can be completed
+ * right here (a form POST to the token URL); interactive flows link out to
+ * the authorization URL, and the token they produce is pasted above.
+ */
+function oauthFlows(scheme) {
+  const flows = scheme.flows ?? {};
+  const parts = [];
+  for (const [name, flow] of Object.entries(flows)) {
+    const scopes = Object.entries(flow.scopes ?? {});
+    const scopeList = scopes.length
+      ? `<div class="auth-scopes">${scopes
+          .map(
+            ([scope, description]) =>
+              `<label class="auth-scope" title="${esc(description)}"><input type="checkbox" value="${esc(scope)}" data-oauth-scope checked> <code>${esc(scope)}</code></label>`,
+          )
+          .join('')}</div>`
+      : '';
+    if ((name === 'clientCredentials' || name === 'password') && flow.tokenUrl) {
+      const extra = name === 'password'
+        ? `<input class="tryit-input" type="text" data-oauth-field="username" placeholder="username" autocomplete="off">
+          <input class="tryit-input" type="password" data-oauth-field="password" placeholder="password" autocomplete="off">`
+        : '';
+      parts.push(`      <details class="auth-flow" data-oauth-flow="${esc(name)}" data-token-url="${esc(flow.tokenUrl)}" data-auth-scheme-ref="${esc(scheme.id)}">
+        <summary>${name === 'password' ? 'Password grant' : 'Client credentials'} · <code>${esc(flow.tokenUrl)}</code></summary>
+        <div class="auth-flow-body">
+          <input class="tryit-input" type="text" data-oauth-field="client_id" placeholder="client_id" autocomplete="off" spellcheck="false">
+          <input class="tryit-input" type="password" data-oauth-field="client_secret" placeholder="client_secret" autocomplete="off">
+          ${extra}
+          ${scopeList}
+          <div class="auth-flow-actions"><button type="button" class="tryit-tool" data-oauth-request>Get token</button><span class="auth-flow-status" data-oauth-status role="status"></span></div>
+        </div>
+      </details>`);
+    } else if (flow.authorizationUrl) {
+      parts.push(`      <p class="auth-hint auth-hint--scheme">${name === 'implicit' ? 'Implicit' : 'Authorization code'} flow: <a href="${esc(flow.authorizationUrl)}" target="_blank" rel="noopener">authorize</a>${flow.tokenUrl ? ` · token URL <code>${esc(flow.tokenUrl)}</code>` : ''}${scopes.length ? ` · scopes ${scopes.map(([scope]) => `<code>${esc(scope)}</code>`).join(' ')}` : ''}</p>`);
+    }
+  }
+  return parts.join('\n');
+}
+
+function eyeButton() {
+  return `<button type="button" class="auth-eye" data-auth-eye aria-label="Show value" aria-pressed="false">
+            <svg class="auth-eye-show" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7Z"/><circle cx="12" cy="12" r="3"/></svg>
+            <svg class="auth-eye-hide" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9.9 4.24A9.12 9.12 0 0 1 12 4c6.5 0 10 8 10 8a13.16 13.16 0 0 1-1.67 2.68M6.61 6.61A13.53 13.53 0 0 0 2 12s3.5 8 10 8a9.74 9.74 0 0 0 5.39-1.61M2 2l20 20"/><path d="M14.12 14.12a3 3 0 1 1-4.24-4.24"/></svg>
+          </button>`;
 }
 
 /**

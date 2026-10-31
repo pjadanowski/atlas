@@ -39,63 +39,203 @@
     for (const card of section?.querySelectorAll('details.child-attrs') ?? []) card.open = open;
   });
 
-  // ---- Global authorization (one bearer token for every try-it request) ----
-  const TOKEN_KEY = 'tryit:token';
+  // ---- Global authorization: credentials per security scheme ----
+  // { [schemeId]: { token | user, pass | key } } in localStorage. The try-it
+  // runtime reads it through window.atlasAuth to authorize each request.
+  const AUTH_KEY = 'atlas:auth';
+  const LEGACY_TOKEN_KEY = 'tryit:token';
+  let schemes = [];
+  try {
+    schemes = JSON.parse(document.body.dataset.authSchemes || '[]');
+  } catch {
+    schemes = [];
+  }
 
-  function storedToken() {
+  function readAuth() {
     try {
-      return localStorage.getItem(TOKEN_KEY) || '';
+      const saved = JSON.parse(localStorage.getItem(AUTH_KEY) || 'null');
+      if (saved && typeof saved === 'object') return saved;
+      // One-time migration of the single bearer token earlier versions kept.
+      const legacy = localStorage.getItem(LEGACY_TOKEN_KEY);
+      const target = schemes.find((scheme) => usesToken(scheme));
+      return legacy && target ? { [target.id]: { token: legacy } } : {};
     } catch {
-      return '';
+      return {};
     }
   }
 
-  function refreshAuthUI() {
-    const isSet = storedToken() !== '';
-    for (const state of document.querySelectorAll('[data-auth-state]')) {
-      state.textContent = isSet ? 'Bearer ••••••••' : 'Not set';
-      state.classList.toggle('is-set', isSet);
+  let auth = readAuth();
+
+  function usesToken(scheme) {
+    return scheme.type === 'oauth2' || scheme.type === 'openIdConnect' || (scheme.type === 'http' && scheme.scheme !== 'basic');
+  }
+
+  function isConfigured(scheme) {
+    const value = auth[scheme.id] ?? {};
+    if (scheme.type === 'apiKey') return Boolean(value.key);
+    if (scheme.type === 'http' && scheme.scheme === 'basic') return Boolean(value.user || value.pass);
+    return Boolean(value.token);
+  }
+
+  function saveAuth() {
+    try {
+      localStorage.setItem(AUTH_KEY, JSON.stringify(auth));
+      localStorage.removeItem(LEGACY_TOKEN_KEY);
+    } catch {
+      /* Storage blocked — credentials last for this page only. */
     }
-    document.querySelector('[data-auth-dot]')?.classList.toggle('is-set', isSet);
+    refreshAuthUI();
+  }
+
+  /**
+   * First security alternative whose schemes are all configured, applied to
+   * a request under construction. `security` is [[schemeId, …], …];
+   * an empty alternative means anonymous access is allowed.
+   */
+  function applyAuth(security, request) {
+    const byId = new Map(schemes.map((scheme) => [scheme.id, scheme]));
+    const usable = (security || []).find(
+      (alternative) => alternative.length > 0 && alternative.every((id) => byId.has(id) && isConfigured(byId.get(id))),
+    );
+    if (!usable) return null;
+    for (const id of usable) {
+      const scheme = byId.get(id);
+      const value = auth[id];
+      if (scheme.type === 'apiKey') {
+        if (scheme.location === 'header') request.headers[scheme.name] = value.key;
+        else if (scheme.location === 'query') request.query.set(scheme.name, value.key);
+        else if (scheme.location === 'cookie') request.credentials = 'include';
+      } else if (scheme.type === 'http' && scheme.scheme === 'basic') {
+        const raw = `${value.user ?? ''}:${value.pass ?? ''}`;
+        request.headers.Authorization = `Basic ${btoa(String.fromCharCode(...new TextEncoder().encode(raw)))}`;
+      } else {
+        request.headers.Authorization = `Bearer ${value.token}`;
+      }
+    }
+    return usable;
+  }
+
+  function describe(security) {
+    const byId = new Map(schemes.map((scheme) => [scheme.id, scheme]));
+    const usable = (security || []).find(
+      (alternative) => alternative.length > 0 && alternative.every((id) => byId.has(id) && isConfigured(byId.get(id))),
+    );
+    return usable ? usable.join(' + ') : '';
+  }
+
+  window.atlasAuth = { apply: applyAuth, describe };
+
+  function refreshAuthUI() {
+    const any = schemes.some(isConfigured);
+    document.querySelector('[data-auth-dot]')?.classList.toggle('is-set', any);
+    for (const state of document.querySelectorAll('[data-auth-state]')) {
+      const panel = state.closest('[data-tryit]');
+      let security = [];
+      try {
+        security = JSON.parse(panel?.dataset.security || '[]');
+      } catch {
+        security = [];
+      }
+      const used = describe(security);
+      state.textContent = used ? `${used} ✓` : 'Not set';
+      state.classList.toggle('is-set', Boolean(used));
+    }
+    for (const section of document.querySelectorAll('[data-auth-section]')) {
+      const scheme = schemes.find((entry) => entry.id === section.dataset.authSection);
+      const state = section.querySelector('[data-auth-section-state]');
+      if (scheme && state) state.textContent = isConfigured(scheme) ? 'Set' : '';
+    }
   }
 
   refreshAuthUI();
 
   const authDialog = document.querySelector('[data-auth-dialog]');
+  function fillAuthInputs() {
+    for (const input of authDialog.querySelectorAll('[data-auth-scheme]')) {
+      input.value = auth[input.dataset.authScheme]?.[input.dataset.authField] ?? '';
+    }
+  }
+
   document.addEventListener('click', (event) => {
     if (event.target.closest('[data-auth-open]') && authDialog) {
-      const input = authDialog.querySelector('[data-auth-token]');
-      input.value = storedToken();
+      fillAuthInputs();
+      // Expand what matters here: the schemes this page's endpoint accepts,
+      // plus any already configured; fold the rest.
+      let accepted = [];
+      try {
+        accepted = JSON.parse(document.querySelector('[data-tryit]')?.dataset.security || '[]').flat();
+      } catch {
+        accepted = [];
+      }
+      const sections = [...authDialog.querySelectorAll('[data-auth-section]')];
+      const relevant = (section) => {
+        const scheme = schemes.find((entry) => entry.id === section.dataset.authSection);
+        return accepted.includes(section.dataset.authSection) || (scheme && isConfigured(scheme));
+      };
+      if (sections.some(relevant)) for (const section of sections) section.open = relevant(section);
       authDialog.showModal();
-      input.focus();
+      authDialog.querySelector('[data-auth-section][open] [data-auth-scheme]')?.focus();
     }
     if (event.target.closest('[data-auth-close]')) authDialog?.close();
     const eye = event.target.closest('[data-auth-eye]');
-    if (eye && authDialog) {
-      const input = authDialog.querySelector('[data-auth-token]');
+    if (eye) {
+      const input = eye.parentElement.querySelector('input');
       const show = input.type === 'password';
       input.type = show ? 'text' : 'password';
       eye.classList.toggle('is-visible', show);
       eye.setAttribute('aria-pressed', String(show));
-      eye.setAttribute('aria-label', show ? 'Hide token' : 'Show token');
+      eye.setAttribute('aria-label', show ? 'Hide value' : 'Show value');
     }
     if (event.target.closest('[data-auth-clear]') && authDialog) {
-      authDialog.querySelector('[data-auth-token]').value = '';
-      persistToken('');
+      auth = {};
+      fillAuthInputs();
+      saveAuth();
     }
+    const oauth = event.target.closest('[data-oauth-request]');
+    if (oauth) requestOAuthToken(oauth.closest('[data-oauth-flow]'));
   });
 
   authDialog?.addEventListener('input', (event) => {
-    if (event.target.dataset?.authToken !== undefined) persistToken(event.target.value);
+    const { authScheme, authField } = event.target.dataset ?? {};
+    if (!authScheme) return;
+    auth[authScheme] = { ...(auth[authScheme] ?? {}), [authField]: event.target.value };
+    saveAuth();
   });
 
-  function persistToken(value) {
-    try {
-      localStorage.setItem(TOKEN_KEY, value);
-    } catch {
-      /* Storage blockiert — Token gilt nur für diese Seite. */
+  /**
+   * OAuth 2.0 client-credentials / password grant against the flow's token
+   * URL. The token endpoint must allow CORS from the docs origin — most do
+   * for exactly this purpose; when it does not, the error says so.
+   */
+  async function requestOAuthToken(flow) {
+    const status = flow.querySelector('[data-oauth-status]');
+    const field = (name) => flow.querySelector(`[data-oauth-field="${name}"]`)?.value ?? '';
+    const scopes = [...flow.querySelectorAll('[data-oauth-scope]:checked')].map((box) => box.value);
+    const body = new URLSearchParams({ grant_type: flow.dataset.oauthFlow === 'password' ? 'password' : 'client_credentials' });
+    if (flow.dataset.oauthFlow === 'password') {
+      body.set('username', field('username'));
+      body.set('password', field('password'));
     }
-    refreshAuthUI();
+    if (scopes.length) body.set('scope', scopes.join(' '));
+    const headers = { 'Content-Type': 'application/x-www-form-urlencoded', Accept: 'application/json' };
+    const raw = `${field('client_id')}:${field('client_secret')}`;
+    headers.Authorization = `Basic ${btoa(String.fromCharCode(...new TextEncoder().encode(raw)))}`;
+    status.textContent = 'Requesting…';
+    try {
+      const response = await fetch(flow.dataset.tokenUrl, { method: 'POST', headers, body });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok || !data.access_token) {
+        status.textContent = `Failed: ${data.error_description || data.error || response.status}`;
+        return;
+      }
+      const schemeId = flow.dataset.authSchemeRef;
+      auth[schemeId] = { ...(auth[schemeId] ?? {}), token: data.access_token };
+      saveAuth();
+      fillAuthInputs();
+      status.textContent = data.expires_in ? `Token received · expires in ${data.expires_in}s` : 'Token received';
+    } catch {
+      status.textContent = 'Network or CORS error — the token URL must allow requests from this origin';
+    }
   }
 
   // ---- Try-it drawer: open + lazy-load runtime and styles on first open ----

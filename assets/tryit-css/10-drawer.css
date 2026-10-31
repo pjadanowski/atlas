@@ -496,3 +496,30 @@
   color: var(--code-text);
   overflow-wrap: anywhere;
 }
+
+/* Server variables ({region}, {basePath}) below the server picker */
+.tryit-servervars {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 10px;
+  margin-top: 6px;
+}
+
+.tryit-servervars[hidden] {
+  display: none;
+}
+
+.tryit-servervar {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex: 1 1 140px;
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+  color: var(--code-muted);
+}
+
+.tryit-servervar .tryit-input {
+  flex: 1;
+  min-width: 0;
+}

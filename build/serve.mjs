@@ -25,7 +25,7 @@ const MIME_TYPES = {
   '.ico': 'image/x-icon',
 };
 
-createServer(async (request, response) => {
+const server = createServer(async (request, response) => {
   try {
     const url = new URL(request.url, 'http://localhost');
     let path = decodeURIComponent(url.pathname);
@@ -59,9 +59,12 @@ createServer(async (request, response) => {
     response.writeHead(404, { 'Content-Type': 'text/plain; charset=utf-8' });
     response.end('Not found');
   }
-}).listen(PORT, () => {
-  console.log(`Preview: http://localhost:${PORT}${BASE}/`);
-  console.log(`MCP:     http://localhost:${PORT}${BASE}/mcp`);
+});
+// PORT=0 picks a free port; report the one actually bound.
+server.listen(PORT, () => {
+  const { port } = server.address();
+  console.log(`Preview: http://localhost:${port}${BASE}/`);
+  console.log(`MCP:     http://localhost:${port}${BASE}/mcp`);
 });
 
 function readBody(request) {
