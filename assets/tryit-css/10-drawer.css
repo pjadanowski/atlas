@@ -1,0 +1,498 @@
+/* Try-it drawer — loaded lazily together with the try-it runtime the first
+   time a "Try it" button is clicked. Shares the form primitives defined in
+   the eager bundle (assets/css/55-tryit.css). */
+
+.tryit-drawer {
+  position: fixed;
+  inset: 0 0 0 auto;
+  width: min(520px, 100vw);
+  height: 100dvh;
+  max-height: none;
+  margin: 0;
+  padding: 0;
+  border: none;
+  border-left: 1px solid var(--code-border);
+  background: var(--code-bg);
+  color: var(--code-text);
+  box-shadow: -24px 0 64px rgba(0, 0, 0, 0.35);
+}
+
+.tryit-drawer::backdrop {
+  background: rgba(10, 11, 18, 0.45);
+  backdrop-filter: blur(1.5px);
+}
+
+/* Slide-in: dialogs toggle display, so animate via @starting-style. */
+.tryit-drawer[open] {
+  translate: 0 0;
+  transition: translate 240ms cubic-bezier(0.32, 0.72, 0, 1);
+
+  @starting-style {
+    translate: 100% 0;
+  }
+}
+
+.tryit-drawer[open]::backdrop {
+  opacity: 1;
+  transition: opacity 240ms var(--ease);
+
+  @starting-style {
+    opacity: 0;
+  }
+}
+
+.tryit-form {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+
+.tryit-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-shrink: 0;
+  height: var(--header-height);
+  padding: 0 14px 0 18px;
+  border-bottom: 1px solid var(--code-border);
+}
+
+.tryit-head-title {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+
+.tryit-head-path {
+  font-family: var(--font-mono);
+  font-size: 12.5px;
+  font-weight: 550;
+  color: var(--code-text);
+  background: none;
+  padding: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.tryit-scroll {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  flex: 1;
+  overflow-y: auto;
+  padding: 18px;
+}
+
+.tryit-group {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  border: 0;
+  padding: 0;
+  margin: 0;
+  min-width: 0;
+}
+
+.tryit-subhead {
+  font-size: 10.5px;
+  font-weight: 650;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--code-muted);
+  padding: 0;
+  margin-bottom: 2px;
+}
+
+/* ---- JSON body editor (highlight layer behind a transparent textarea) ---- */
+
+.tryit-jsonwrap {
+  position: relative;
+  background: var(--code-surface);
+  border-radius: var(--radius-control);
+}
+
+.tryit-json {
+  position: relative;
+  z-index: 1;
+  resize: vertical;
+  line-height: 1.5;
+  min-height: 96px;
+  background: transparent;
+  color: transparent;
+  caret-color: var(--code-text);
+  white-space: pre-wrap;
+  overflow-wrap: break-word;
+  display: block;
+}
+
+.tryit-json::selection {
+  background: color-mix(in srgb, var(--accent) 35%, transparent);
+}
+
+.tryit-json-hl {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  margin: 0;
+  padding: 7px 10px;
+  border: 1px solid transparent;
+  overflow: hidden;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--code-text);
+  white-space: pre-wrap;
+  overflow-wrap: break-word;
+  pointer-events: none;
+}
+
+.tryit-json-hl code {
+  font: inherit;
+  white-space: inherit;
+}
+
+.tryit-input--file {
+  padding: 6px;
+  font-family: var(--font-ui);
+}
+
+.tryit-server {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+/* ---- "Copy as" row ---- */
+
+.tryit-copyrow {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding-top: 2px;
+}
+
+.tryit-copylabel {
+  font-size: 10.5px;
+  font-weight: 650;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--code-muted);
+  margin-right: 4px;
+}
+
+.tryit-copyrow .tryit-tool {
+  border: 1px solid var(--code-border);
+}
+
+.tryit-copyrow .tryit-tool:hover {
+  border-color: var(--code-muted);
+}
+
+/* ---- Authorization summary row ---- */
+
+.tryit-authrow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 9px 12px;
+  border: 1px solid var(--code-border);
+  border-radius: var(--radius-control);
+  background: var(--code-surface);
+}
+
+.tryit-authstate {
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+  color: var(--code-muted);
+}
+
+.tryit-authstate.is-set {
+  color: var(--success);
+}
+
+.tryit-authedit {
+  margin-left: auto;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--code-text);
+  padding: 3px 10px;
+  border-radius: var(--radius-pill);
+  background: color-mix(in srgb, #ffffff 9%, transparent);
+  transition: background var(--duration) var(--ease);
+}
+
+.tryit-authedit:hover {
+  background: color-mix(in srgb, #ffffff 15%, transparent);
+}
+
+/* ---- Footer ---- */
+
+.tryit-foot {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10px;
+  flex-shrink: 0;
+  padding: 12px 18px;
+  border-top: 1px solid var(--code-border);
+  background: var(--code-bg);
+}
+
+.tryit-fill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11.5px;
+  font-weight: 550;
+  color: var(--code-muted);
+  padding: 5px 10px;
+  border: 1px solid var(--code-border);
+  border-radius: var(--radius-pill);
+  transition: color var(--duration) var(--ease), border-color var(--duration) var(--ease);
+}
+
+.tryit-fill:hover {
+  color: var(--code-text);
+  border-color: var(--code-muted);
+}
+
+.tryit-kbd {
+  display: inline-flex;
+  gap: 3px;
+  margin-left: auto;
+}
+
+/* ---- History ---- */
+
+.tryit-history {
+  font-size: 11.5px;
+}
+
+.tryit-history summary {
+  cursor: pointer;
+  color: var(--code-muted);
+  font-weight: 550;
+}
+
+.tryit-history-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-top: 8px;
+}
+
+.tryit-hist-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 8px;
+  border: 1px solid var(--code-border);
+  border-radius: var(--radius-control);
+  background: var(--code-surface);
+}
+
+.tryit-hist-url {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--code-text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  flex: 1;
+  min-width: 0;
+}
+
+.tryit-hist-meta {
+  font-size: 10.5px;
+  color: var(--code-muted);
+  flex-shrink: 0;
+}
+
+.tryit-kbd kbd {
+  font-family: var(--font-ui);
+  font-size: 10px;
+  color: var(--code-muted);
+  border: 1px solid var(--code-border);
+  border-radius: 5px;
+  padding: 1px 5px;
+}
+
+/* ---- Response ---- */
+
+.tryit-pending {
+  font-size: 12px;
+  color: var(--code-muted);
+}
+
+/* Resizable: drag the corner handle to give the response more room. */
+.tryit-result {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  border-top: 1px solid var(--code-border);
+  padding-top: 12px;
+  resize: vertical;
+  overflow: auto;
+  min-height: 120px;
+  max-height: 60vh;
+}
+
+.tryit-status {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+}
+
+.tryit-code {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  font-weight: 700;
+  padding: 2px 8px;
+  border-radius: var(--radius-pill);
+}
+
+.tryit-code[data-class='2'] { color: var(--success); background: color-mix(in srgb, var(--success) 15%, transparent); }
+.tryit-code[data-class='3'] { color: var(--info); background: color-mix(in srgb, var(--info) 15%, transparent); }
+.tryit-code[data-class='4'] { color: var(--warning); background: color-mix(in srgb, var(--warning) 15%, transparent); }
+.tryit-code[data-class='5'] { color: var(--danger); background: color-mix(in srgb, var(--danger) 15%, transparent); }
+
+.tryit-statustext {
+  font-size: 12px;
+  font-weight: 550;
+  color: var(--code-text);
+}
+
+.tryit-meta {
+  margin-left: auto;
+  font-size: 11px;
+  color: var(--code-muted);
+}
+
+.tryit-tools {
+  display: flex;
+  gap: 4px;
+}
+
+.tryit-tool {
+  font-size: 10.5px;
+  font-weight: 550;
+  color: var(--code-muted);
+  padding: 2px 8px;
+  border-radius: var(--radius-pill);
+  transition: color var(--duration) var(--ease), background var(--duration) var(--ease);
+}
+
+.tryit-tool:hover {
+  color: var(--code-text);
+  background: color-mix(in srgb, #ffffff 8%, transparent);
+}
+
+/* JSON tree */
+.tryit-node,
+.tryit-leaf,
+.tryit-raw {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+.tryit-node summary {
+  cursor: pointer;
+  list-style: none;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.tryit-node summary::before {
+  content: '▸';
+  display: inline-block;
+  width: 14px;
+  color: var(--code-muted);
+  transition: transform var(--duration) var(--ease);
+}
+
+.tryit-node[open] > summary::before {
+  transform: rotate(90deg);
+}
+
+.tryit-children {
+  padding-left: 18px;
+  border-left: 1px solid var(--code-border);
+  margin-left: 5px;
+}
+
+.tryit-leaf {
+  padding-left: 14px;
+  overflow-wrap: anywhere;
+}
+
+.tryit-colon,
+.tryit-brace {
+  color: var(--code-muted);
+}
+
+.tryit-count {
+  font-size: 11px;
+  color: var(--code-muted);
+}
+
+.tryit-more {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--accent);
+  padding: 2px 0 2px 14px;
+}
+
+.tryit-more:hover {
+  text-decoration: underline;
+}
+
+.tryit-raw {
+  color: var(--code-text);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.tryit-empty {
+  font-size: 12px;
+  color: var(--code-muted);
+}
+
+.tryit-hint {
+  font-size: 12px;
+  line-height: 1.55;
+  color: var(--code-muted);
+  overflow-wrap: anywhere;
+}
+
+/* Response headers */
+.tryit-headers {
+  font-size: 11.5px;
+}
+
+.tryit-headers summary {
+  cursor: pointer;
+  color: var(--code-muted);
+  font-weight: 550;
+}
+
+.tryit-hrow {
+  display: flex;
+  gap: 8px;
+  padding: 3px 0;
+  font-family: var(--font-mono);
+  font-size: 11px;
+}
+
+.tryit-hkey {
+  color: var(--code-key);
+  flex-shrink: 0;
+}
+
+.tryit-hval {
+  color: var(--code-text);
+  overflow-wrap: anywhere;
+}

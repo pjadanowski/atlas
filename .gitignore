@@ -1,0 +1,10 @@
+node_modules/
+vendor/
+dist/
+composer.lock
+.phpunit.result.cache
+.phpunit.cache/
+.omc/
+.claude/settings.local.json
+# Private specs and scratch notes — never published
+local/

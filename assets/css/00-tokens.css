@@ -1,0 +1,102 @@
+@font-face {
+  font-family: 'Instrument Sans Variable';
+  font-style: normal;
+  font-weight: 400 700;
+  font-display: swap;
+  /* Relative to the bundle at /assets/app.<hash>.css, so it survives --base. */
+  src: url('fonts/instrument-sans.woff2') format('woff2-variations');
+}
+
+@font-face {
+  font-family: 'JetBrains Mono Variable';
+  font-style: normal;
+  font-weight: 100 800;
+  font-display: swap;
+  src: url('fonts/jetbrains-mono.woff2') format('woff2-variations');
+}
+
+:root {
+  --font-ui: 'Instrument Sans Variable', system-ui, sans-serif;
+  --font-mono: 'JetBrains Mono Variable', ui-monospace, 'SF Mono', monospace;
+
+  --surface-0: #ffffff;
+  --surface-1: #fafafb;
+  --surface-2: #f2f3f5;
+  --border: #e7e8ec;
+  --text-primary: #17181c;
+  --text-secondary: #5c6070;
+  --text-muted: #9296a5;
+  --accent: #5b5bd6;
+  --accent-soft: color-mix(in srgb, var(--accent) 10%, transparent);
+
+  --success: #1a9c6b;
+  --info: #3d7bfa;
+  --warning: #d98a13;
+  --danger: #e5484d;
+  --brick: #b3564a; /* muted brick red — "required" markers */
+
+  --method-get: #1a9c6b;
+  --method-post: #3d7bfa;
+  --method-put: #d98a13;
+  --method-patch: #d98a13;
+  --method-delete: #e5484d;
+  --method-head: #1a9c6b;
+  --method-options: #8890a8;
+  --method-trace: #8890a8;
+
+  /* Code column stays dark in both themes (Stripe-style). */
+  --code-bg: #0e1017;
+  --code-surface: #151827;
+  --code-border: #232841;
+  --code-text: #dfe3f0;
+  --code-muted: #8890a8;
+  --code-key: #79b8ff;
+  --code-string: #93d3a2;
+  --code-number: #f2b46d;
+  --code-keyword: #c792ea;
+  --code-comment: #586080;
+
+  --radius-nav: 8px;
+  --radius-control: 10px;
+  --radius-card: 12px;
+  --radius-code: 14px;
+  --radius-pill: 999px;
+
+  --header-height: 57px;
+  --sidebar-width: 264px;
+  --code-col-width: 480px;
+  --content-max: 680px;
+
+  --duration: 150ms;
+  --ease: ease-out;
+
+  color-scheme: light;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme='light']) {
+    --surface-0: #0e0f13;
+    --surface-1: #111318;
+    --surface-2: #171a21;
+    --border: #23252e;
+    --text-primary: #f0f1f5;
+    --text-secondary: #a2a7b6;
+    --text-muted: #707585;
+    --accent: #7778ff;
+    --brick: #cd7a6c;
+    color-scheme: dark;
+  }
+}
+
+:root[data-theme='dark'] {
+  --surface-0: #0e0f13;
+  --surface-1: #111318;
+  --surface-2: #171a21;
+  --border: #23252e;
+  --text-primary: #f0f1f5;
+  --text-secondary: #a2a7b6;
+  --text-muted: #707585;
+  --accent: #7778ff;
+  --brick: #cd7a6c;
+  color-scheme: dark;
+}

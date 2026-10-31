@@ -1,0 +1,41 @@
+{
+    "name": "pjadanowski/atlas",
+    "description": "Atlas — a static, three-column OpenAPI documentation renderer for Laravel Scramble.",
+    "keywords": ["laravel", "scramble", "openapi", "documentation", "api"],
+    "license": "MIT",
+    "type": "library",
+    "require": {
+        "php": "^8.2",
+        "dedoc/scramble": "^0.13",
+        "illuminate/contracts": "^11.0|^12.0|^13.0",
+        "spatie/laravel-package-tools": "^1.16"
+    },
+    "require-dev": {
+        "orchestra/testbench": "^10.0|^11.0"
+    },
+    "autoload": {
+        "psr-4": {
+            "Pjadanowski\\Atlas\\": "src/"
+        }
+    },
+    "autoload-dev": {
+        "psr-4": {
+            "Pjadanowski\\Atlas\\Tests\\": "tests/"
+        }
+    },
+    "scripts": {
+        "test": "phpunit"
+    },
+    "extra": {
+        "laravel": {
+            "providers": [
+                "Pjadanowski\\Atlas\\AtlasServiceProvider"
+            ]
+        }
+    },
+    "config": {
+        "sort-packages": true
+    },
+    "minimum-stability": "stable",
+    "prefer-stable": true
+}

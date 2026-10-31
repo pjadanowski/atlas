@@ -1,0 +1,305 @@
+/* Try-it entry points + global auth dialog (eager part).
+   The drawer's own styles live in assets/tryit-css and load lazily with
+   the try-it runtime — they are only needed after the first "Try it" click. */
+
+/* ---- Launcher (top of the dark code column) ---- */
+
+.tryit-launch {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 10px 14px;
+  font-size: 12.5px;
+  font-weight: 650;
+  color: #ffffff;
+  background: var(--accent);
+  border-radius: var(--radius-code);
+  transition: filter var(--duration) var(--ease);
+}
+
+.tryit-launch:hover {
+  filter: brightness(1.12);
+}
+
+.tryit-launch-path {
+  margin-left: auto;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 500;
+  color: color-mix(in srgb, #ffffff 75%, transparent);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* ---- Shared form primitives (used by the auth dialog and the drawer) ---- */
+
+.tryit-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.tryit-label {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+  font-weight: 500;
+  color: var(--code-text);
+}
+
+.tryit-req {
+  font-family: var(--font-ui);
+  font-style: normal;
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--brick);
+}
+
+.tryit-input {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--code-text);
+  background: var(--code-surface);
+  border: 1px solid var(--code-border);
+  border-radius: var(--radius-control);
+  padding: 7px 10px;
+  width: 100%;
+  transition: border-color var(--duration) var(--ease), box-shadow var(--duration) var(--ease);
+}
+
+.tryit-input:focus-visible {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 35%, transparent);
+}
+
+.tryit-input::placeholder {
+  color: var(--code-muted);
+  opacity: 0.7;
+}
+
+.tryit-send {
+  font-size: 12.5px;
+  font-weight: 650;
+  color: #ffffff;
+  background: var(--accent);
+  border-radius: var(--radius-control);
+  padding: 8px 16px;
+  transition: filter var(--duration) var(--ease);
+}
+
+.tryit-send:hover {
+  filter: brightness(1.15);
+}
+
+.tryit-send:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+.tryit-close {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  margin-left: auto;
+  flex-shrink: 0;
+  color: var(--code-muted);
+  border-radius: var(--radius-control);
+  transition: color var(--duration) var(--ease), background var(--duration) var(--ease);
+}
+
+.tryit-close:hover {
+  color: var(--code-text);
+  background: color-mix(in srgb, #ffffff 8%, transparent);
+}
+
+/* ---- Global auth dialog (light — lives with the page chrome) ---- */
+
+.auth-dialog {
+  width: min(440px, calc(100vw - 32px));
+  margin: auto;
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-card);
+  background: var(--surface-0);
+  color: var(--text-primary);
+  box-shadow: 0 24px 64px rgba(0, 0, 0, 0.22);
+}
+
+/* MCP connection dialog shares the auth dialog chrome, but holds code. */
+.mcp-dialog {
+  width: min(600px, calc(100vw - 32px));
+}
+
+.mcp-url {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 34px;
+  padding: 0 4px 0 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-control);
+  background: var(--surface-1);
+}
+
+.mcp-url code {
+  flex: 1;
+  min-width: 0;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.mcp-dialog .code-panel {
+  margin-top: 4px;
+}
+
+.mcp-dialog .code-pane pre {
+  max-height: 220px;
+}
+
+.auth-dialog::backdrop {
+  background: rgba(10, 11, 18, 0.45);
+  backdrop-filter: blur(1.5px);
+}
+
+.auth-dialog[open] {
+  opacity: 1;
+  translate: 0 0;
+  transition: opacity 180ms var(--ease), translate 180ms var(--ease);
+
+  @starting-style {
+    opacity: 0;
+    translate: 0 8px;
+  }
+}
+
+.auth-box {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding: 18px 20px 20px;
+}
+
+.auth-head {
+  display: flex;
+  align-items: center;
+}
+
+.auth-title {
+  font-size: 14.5px;
+  font-weight: 650;
+  letter-spacing: -0.01em;
+}
+
+.auth-head .tryit-close {
+  color: var(--text-muted);
+}
+
+.auth-head .tryit-close:hover {
+  color: var(--text-primary);
+  background: var(--surface-2);
+}
+
+.auth-hint {
+  font-size: 12.5px;
+  line-height: 1.55;
+  color: var(--text-secondary);
+}
+
+.auth-hint code {
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+  background: var(--surface-2);
+  border-radius: 5px;
+  padding: 1px 5px;
+}
+
+/* The shared field styles are dark-column flavored — re-tint for light. */
+.auth-box .tryit-label {
+  color: var(--text-primary);
+}
+
+.auth-box .tryit-input {
+  color: var(--text-primary);
+  background: var(--surface-1);
+  border-color: var(--border);
+}
+
+.auth-box .tryit-input:focus-visible {
+  border-color: var(--accent);
+}
+
+.auth-box .tryit-input::placeholder {
+  color: var(--text-muted);
+}
+
+.auth-tokenwrap {
+  position: relative;
+}
+
+.auth-tokenwrap .tryit-input {
+  padding-right: 38px;
+}
+
+.auth-eye {
+  position: absolute;
+  top: 50%;
+  right: 6px;
+  translate: 0 -50%;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  color: var(--text-muted);
+  border-radius: 7px;
+  transition: color var(--duration) var(--ease), background var(--duration) var(--ease);
+}
+
+.auth-eye:hover {
+  color: var(--text-primary);
+  background: var(--surface-2);
+}
+
+.auth-eye .auth-eye-hide {
+  display: none;
+}
+
+.auth-eye.is-visible .auth-eye-show {
+  display: none;
+}
+
+.auth-eye.is-visible .auth-eye-hide {
+  display: block;
+}
+
+.auth-foot {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.auth-clear {
+  font-size: 12px;
+  font-weight: 550;
+  color: var(--text-secondary);
+  padding: 7px 12px;
+  border-radius: var(--radius-control);
+  transition: color var(--duration) var(--ease), background var(--duration) var(--ease);
+}
+
+.auth-clear:hover {
+  color: var(--text-primary);
+  background: var(--surface-2);
+}

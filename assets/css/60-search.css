@@ -1,0 +1,132 @@
+.search-dialog {
+  width: min(620px, calc(100vw - 32px));
+  margin: 12vh auto auto;
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-code);
+  background: var(--surface-0);
+  color: var(--text-primary);
+}
+
+.search-dialog::backdrop {
+  background: color-mix(in srgb, #0e0f13 45%, transparent);
+  backdrop-filter: blur(2px);
+}
+
+.search-box input {
+  width: 100%;
+  font: inherit;
+  font-size: 15px;
+  color: var(--text-primary);
+  background: none;
+  border: none;
+  border-bottom: 1px solid var(--border);
+  padding: 15px 18px;
+  outline: none;
+}
+
+/* The input is borderless by design — the visible focus signal is the
+   accent underline (3:1+ against both surfaces). */
+.search-box input:focus-visible {
+  border-bottom-color: var(--accent);
+  box-shadow: 0 1px 0 0 var(--accent);
+}
+
+.search-box input::placeholder {
+  color: var(--text-muted);
+}
+
+.search-results {
+  list-style: none;
+  margin: 0;
+  padding: 8px;
+  max-height: 46vh;
+  overflow-y: auto;
+}
+
+.search-results:empty {
+  padding: 0;
+}
+
+.search-result a {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 10px;
+  border-radius: var(--radius-nav);
+  color: var(--text-primary);
+}
+
+.search-result a:hover,
+.search-result.is-selected a {
+  background: var(--accent-soft);
+  text-decoration: none;
+}
+
+.search-result-main {
+  min-width: 0;
+  flex: 1;
+}
+
+.search-result-title {
+  display: block;
+  font-size: 13.5px;
+  font-weight: 550;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.search-result-path {
+  display: block;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--text-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.search-result-snippet {
+  display: block;
+  font-size: 11.5px;
+  color: var(--text-secondary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  margin-top: 1px;
+}
+
+/* Matched words — including the ones found despite a typo. */
+.search-result mark {
+  background: none;
+  color: var(--accent);
+  font-weight: 600;
+}
+
+.search-result-group {
+  font-size: 11px;
+  color: var(--text-muted);
+  flex-shrink: 0;
+}
+
+.search-empty {
+  padding: 20px 18px;
+  color: var(--text-muted);
+  font-size: 13.5px;
+}
+
+.search-footer {
+  display: flex;
+  gap: 16px;
+  padding: 9px 16px;
+  border-top: 1px solid var(--border);
+  color: var(--text-muted);
+  font-size: 11.5px;
+}
+
+.search-footer span {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}

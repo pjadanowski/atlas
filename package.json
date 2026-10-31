@@ -1,0 +1,10 @@
+{
+  "name": "atlas",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "node build/index.mjs --lang de --allow-spec-html",
+    "watch": "node --watch-path=openapi.json --watch-path=assets --watch-path=build build/index.mjs --lang de --allow-spec-html",
+    "preview": "node build/serve.mjs"
+  }
+}
