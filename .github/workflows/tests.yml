@@ -1,0 +1,55 @@
+name: tests
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  generator:
+    name: Generator (Node ${{ matrix.node }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        node: [20, 22, 24]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+      - name: Build the demo site
+        run: npm run build
+      - name: Unit tests
+        run: npm test
+      - name: Browser tests (try-it console)
+        run: node --test tests/e2e/*.test.mjs
+
+  laravel:
+    name: Laravel ${{ matrix.laravel }} · PHP ${{ matrix.php }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { php: '8.2', laravel: '11.*', testbench: '9.*' }
+          - { php: '8.3', laravel: '11.*', testbench: '9.*' }
+          - { php: '8.2', laravel: '12.*', testbench: '10.*' }
+          - { php: '8.4', laravel: '12.*', testbench: '10.*' }
+          - { php: '8.3', laravel: '13.*', testbench: '11.*' }
+          - { php: '8.4', laravel: '13.*', testbench: '11.*' }
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: ${{ matrix.php }}
+          coverage: none
+      - name: Install dependencies
+        run: |
+          composer require "illuminate/contracts:${{ matrix.laravel }}" "orchestra/testbench:${{ matrix.testbench }}" --no-interaction --no-update
+          composer update --prefer-dist --no-interaction --with-all-dependencies
+      - name: PHPUnit
+        run: vendor/bin/phpunit

@@ -1,270 +1,233 @@
 # Atlas
 
-Zero-runtime-dependency static documentation generator for OpenAPI 3 specs.
-Renders `openapi.json` into a fully static site (`dist/`) — no framework, no
-runtime OpenAPI parsing, works without JavaScript. Design contract lives in
-`AGENTS.md` and `DESIGN_PRINCIPLES.md`.
+**Fast, static, three-column API documentation for OpenAPI 3.x — and a drop-in
+renderer for [Laravel Scramble](https://scramble.dedoc.co).**
 
-## Usage
+Atlas turns an OpenAPI document into a fully static site: every endpoint,
+model and tag is pre-rendered HTML, readable with JavaScript turned off.
+JavaScript only adds search, the try-it console and conveniences. No framework,
+no runtime OpenAPI parsing, no npm dependencies — Node alone builds it.
 
-```bash
-npm run build                 # openapi.json → dist/
-npm run preview               # serve dist/ on http://localhost:4173
-npm run watch                 # rebuild automatically when openapi.json, assets/ or build/ change
-```
+![Endpoint page](docs/screenshots/endpoint-light.png)
 
-There is no `npm install` step: the generator has no dependencies, and the two
-webfonts are vendored in `assets/fonts/` (SIL OFL, licenses beside them). Node
-alone is enough.
+| | |
+|---|---|
+| ![Model page, dark](docs/screenshots/model-dark.png) | ![Try-it console](docs/screenshots/try-it.png) |
 
-The output is fully static — after editing `openapi.json` you must rebuild
-(or keep `npm run watch` running next to `npm run preview`).
+## Highlights
 
-The build accepts flags, so any spec and output directory work:
+- **Reads like Stripe's docs.** Navigation, documentation and a dark code
+  column side by side; nested attributes collapse; responses expanded.
+- **Complete OpenAPI 3.0 and 3.1.** `oneOf`/`anyOf` as variant tabs with
+  discriminator mapping, `allOf` merging, `additionalProperties` maps,
+  `readOnly`/`writeOnly` hidden where they do not apply, nullable type
+  unions, `const`, all constraints, multiple media types, named example
+  switchers, response headers, cookie parameters, callbacks, webhooks,
+  server variables, tag groups (`x-tagGroups`), `x-displayName`,
+  `x-codeSamples`, deprecations.
+- **Code samples in 12 clients** — cURL, HTTPie, JavaScript, Guzzle, Laravel
+  `Http`, PHP, Python requests, HTTPX, Go, Ruby, Java, C# — with credentials
+  derived from each operation's security requirements.
+- **Try it** — a slide-over console with every security scheme (bearer,
+  basic, API key in header/query/cookie, OAuth 2.0 client-credentials and
+  password grants, OpenID Connect), server variables, JSON / form / multipart
+  bodies, request history and a JSON tree viewer.
+- **Search** (⌘K) — typo-tolerant, diacritic-folding, ranked across
+  endpoints, parameters, schema fields, tags and models; fully offline.
+- **MCP server** — the docs answer the Model Context Protocol, so Claude
+  Code, Cursor or VS Code can search your API while writing code against it.
+- **Machine-readable mirrors** — `/openapi.json`, `/llms.txt` and a markdown
+  twin of every page.
+- **Sensible without examples.** Specs generated from code rarely have them;
+  Atlas fills bodies with plausible values guessed from property names.
+- **Small.** ~6 KB of JavaScript (gzip) on page load; search and try-it load
+  on first use. Light and dark, keyboard-first, works on phones.
+- **Themeable.** Built-in color presets, logo, favicon, and every design
+  token overridable with your own CSS.
 
-```bash
-node build/index.mjs --spec path/to/openapi.json --out public/docs --lang de
-```
-
-| Flag | Default | Meaning |
-| --- | --- | --- |
-| `--spec` | `openapi.json` | source specification |
-| `--out` | `dist` | output directory |
-| `--lang` | `en` | page `lang` attribute (`npm run build` passes `de`, this spec's content is German) |
-| `--base` | *(none)* | sub-path the site is served from, e.g. `/docs/api` |
-| `--allow-spec-html` | off | render HTML-authored spec descriptions verbatim instead of escaping them |
-| `--css` | *(none)* | extra stylesheet, loaded last; repeatable |
-| `--js` | *(none)* | extra script, loaded last; repeatable |
-
-`--base` makes every link, asset and search result carry the prefix, so the
-site can be mounted below the domain root (Laravel's `/docs/api`, GitHub Pages'
-`/repo`). Preview a sub-path build with `BASE=/docs/api npm run preview` and
-open <http://localhost:4173/docs/api/>.
-
-Or programmatically:
-
-```js
-import { buildDocs } from './build/index.mjs';
-await buildDocs({ spec: 'openapi.json', out: 'dist', base: '/docs/api' });
-```
-
-## Customizing the output
-
-Descriptions in the specification normally go through a small markdown
-allowlist (`<br>`, links, `<strong>`, `<code>`, lists, headings); everything
-else is escaped. If your descriptions are authored as HTML — tables, sections,
-images — they show up as visible tags, and `--allow-spec-html` renders them
-verbatim instead, with typography applied through a `.spec-html` wrapper.
-
-The switch is applied per description, not per site: only a description that
-carries a tag the markdown allowlist does not already handle (`<section>`,
-`<div>`, `<p>`, `<h2>`, `<ul>`, `<table>`, …) goes out verbatim. Specs mix both
-styles, and forcing the markdown-authored ones through verbatim would print
-their `**` and `###` as literal text.
-
-> **This trades safety for expressiveness, so it is off by default.** Verbatim
-> means no sanitizing at all: a description can run scripts on the docs' origin,
-> and that origin holds the try-it bearer token in `localStorage`. Enable it
-> only for a spec you trust like your own templates — one generated from your
-> code qualifies, one fetched from a partner does not. There is deliberately no
-> middle setting: the sanitizer this project used to have was removed for being
-> bypassable, and a filter that looks safe without being safe is worse than a
-> switch that states the trade-off.
-
-`--css` and `--js` copy your own files into the site and load them after Atlas's
-own bundles, so they can override anything. Both are repeatable and each set is
-concatenated, content-hashed and served as `assets/custom.<hash>.css|js`:
-
-```bash
-node build/index.mjs --css brand.css --css overrides.css --js analytics.js
-```
-
-Because they load last, restyling is usually a matter of redefining the design
-tokens from `assets/css/00-tokens.css`:
-
-```css
-:root { --accent: #e0245e; --font-ui: 'Inter', system-ui, sans-serif; }
-```
-
-## Features
-
-- Three-column layout (nav / content / dark code column), Stripe-style
-- Build-time code snippets (cURL, JavaScript, PHP, Python) + syntax highlighting
-- Typo-tolerant search (⌘K) over a pre-built index: titles, paths,
-  descriptions, parameter and schema names, operationIds and `x-keywords`;
-  one typo from 4 characters, two from 8; diacritics folded ("gebaude" finds
-  "Gebäude"); words that match nothing are dropped instead of returning an
-  empty list. Ranking engine is lazy-loaded with the index on first open
-- **MCP server** — the docs answer the Model Context Protocol at `/mcp`
-  (topbar → MCP shows ready-made snippets for VS Code, Cursor, Claude Code);
-  connected assistants search the API and read endpoint and model pages
-- **Try it** — slide-over console per endpoint (native `<dialog>`), prefilled
-  from spec examples, JSON tree response viewer
-- **Global authorization** — one bearer token (topbar → Authorize), stored in
-  `localStorage`, applied to every try-it request; server selection persists too
-- Try-it QoL: entered values persist per endpoint, per-endpoint request
-  history with one-click restore, "Fill example data" + Reset
-- **Models** — every `components.schemas` entry as a browsable page
-  (`/models/`), linked from request bodies and responses, searchable via ⌘K
-- Snippet language choice remembered globally; deep links to parameters
-  (hover anchors); sidebar quick filter
-- Machine-readable mirrors: `/openapi.json` (topbar download → Postman/
-  Insomnia import), `/llms.txt` + a markdown twin of every endpoint and
-  model page (`…/index.md`)
-- Light/dark theme, full keyboard navigation, works with JS disabled
-  (try-it/search are progressive enhancements)
-
-## MCP: using the docs from an editor assistant
-
-The generated site is also a [Model Context Protocol](https://modelcontextprotocol.io)
-server (Streamable HTTP, stateless). An assistant in VS Code, Cursor or Claude
-Code connects to `https://<docs host>/mcp` and gets four tools:
-
-| Tool | Purpose |
-| --- | --- |
-| `search_api` | typo-tolerant search over endpoints and models — the same engine as ⌘K |
-| `list_endpoints` | every endpoint grouped by tag, optionally one tag |
-| `get_endpoint` | one endpoint's markdown page: parameters, body, responses, examples |
-| `get_model` | one schema's fields, types, required flags and example JSON |
-
-The "MCP" button in the topbar opens a dialog with the server URL and copyable
-configuration for each client, e.g. `.vscode/mcp.json`:
-
-```json
-{ "servers": { "my-api-docs": { "type": "http", "url": "https://docs.example.com/mcp" } } }
-```
-
-Two runtimes serve the endpoint from the same static output (search index,
-markdown pages, `assets/mcp-manifest.json`): `build/mcp.mjs`, used by
-`npm run preview`, and the Laravel package's `McpEndpoint` controller. A plain
-static host (nginx, S3) serves the pages but not `/mcp` — run the preview
-server or the Laravel package for that. Nothing in the MCP surface executes
-API calls; it is documentation access only.
-
-## Laravel / Scramble integration
-
-This repository is also the Composer package `pjadanowski/atlas`, which
-registers Atlas as a [Scramble](https://scramble.dedoc.co) renderer next to
-its `elements` and `scalar` options. Requires Scramble ^0.13 (where the renderer
-hook was introduced) and a `node` binary on the build machine — the generator
-has no npm dependencies, so nothing needs installing beyond Node itself.
+## Laravel / Scramble
 
 ```bash
 composer require pjadanowski/atlas
-php artisan vendor:publish --tag=atlas-config   # optional
-php artisan atlas:build
 ```
 
-The build command asks Scramble's own generator for the specification, writes
-the site to `storage/app/atlas` and points every URL at the path Scramble serves
-its docs from. Scramble's UI route returns the generated entry page; the package
-adds a catch-all route for everything below it, behind the same middleware
-Scramble is configured with — so docs that were not public do not become public.
-The output stays outside `public/` for the same reason. The MCP endpoint
-(`<prefix>/mcp`, route `atlas.docs.mcp`) sits behind that middleware too: an
-assistant can read what a browser on the same network could read, no more.
-Editor clients do not carry a Laravel session, so with the default
-`RestrictedDocsAccess` gate the endpoint is open only where the docs are.
-
-| Option | Purpose |
-| --- | --- |
-| `--spec=` | build from an existing OpenAPI file instead of generating one |
-| `--out=` | override the output directory |
-| `--base=` | override the sub-path the docs are served from |
-| `--lang=` | override the page language attribute |
-| `--allow-spec-html` | render HTML-authored descriptions verbatim for this build |
-
-Customization is configured in `config/atlas.php` rather than on the command
-line, so every build agrees:
-
-```php
-'allow_spec_html' => true,                       // see the warning above
-'css' => [resource_path('atlas/theme.css')],
-'js'  => [resource_path('atlas/extra.js')],
-```
-
-### What to set in `config/scramble.php`
-
-Exactly one value:
+Then in `config/scramble.php`:
 
 ```php
 'renderer' => 'atlas',
 ```
 
-Nothing needs to be added to the `renderers` array — the package registers
-`scramble.renderers.atlas` from its service provider's `register()`, early
-enough for Scramble to see it. If you do add that key, your values are merged
-over the package's defaults.
+That's all for development: with `auto_build` (on by default in the `local`
+environment) the docs at `/docs/api` rebuild themselves whenever your API
+changes. For production, build on deploy:
 
-**Remove `ui.logo` if the published config still has it.** Scramble's
-`GeneratorConfig::renderer()` keeps a legacy branch: the mere presence of
-`ui.logo` makes it ignore `renderer` entirely and force `elements`, so Atlas
-would build correctly and never be displayed. `atlas:build` warns when it sees
-the key.
+```bash
+php artisan atlas:build
+```
 
-Atlas renders the OpenAPI document, so the Scramble options that shape that
-document reach it, while the options belonging to the other two UIs do not:
+Requires PHP 8.2+, Laravel 11, 12 or 13, Scramble ^0.13 and a `node` binary
+(20+) on the machine that builds the docs — nothing to `npm install`.
+
+### How it fits into Scramble
+
+Atlas registers itself as a Scramble renderer next to `elements` and
+`scalar`. `atlas:build` asks Scramble's own generator for the specification,
+writes the site to `storage/app/atlas` and points every URL at the path
+Scramble serves its docs from. Scramble's UI route returns the entry page; the
+package serves everything below it — behind the **same middleware** Scramble
+is configured with, so private docs stay private. The output stays outside
+`public/` for the same reason.
+
+What Scramble's config controls:
 
 | Key in `config/scramble.php` | Effect in Atlas |
 | --- | --- |
 | `renderer` | must be `'atlas'` |
-| `ui.title` | the title in the top bar; falls back to `config('app.name')` |
-| `info.version` | the version badge next to the title |
-| `info.description` | the introduction text on the home page |
-| `servers` | the server list in the try-it console |
-| `middleware` | who may read the docs — Atlas reuses it for its own asset route |
-| `ui.logo` | **must be absent**, see above |
-| `renderers.elements.*`, `renderers.scalar.*` | ignored; they configure the other UIs |
+| `ui.title` | title in the top bar (falls back to `app.name`) |
+| `info.version`, `info.description` | version badge, home page introduction (markdown, with a table of contents in the sidebar) |
+| `servers` | server list in the try-it console |
+| `middleware` | who may read the docs — Atlas reuses it for its own routes |
+| `ui.logo` | **remove it** — its presence makes Scramble force the `elements` renderer; use `atlas.logo` instead |
 
-If Scramble's UI route has been moved off `docs/api`, also set `route_prefix` in
-`config/atlas.php`. The asset route is registered while providers boot, which is
-too early to read the path off Scramble's routes, so it falls back to Scramble's
-default. `atlas:build` compares the two and warns on a mismatch.
+### Configuration
+
+`php artisan vendor:publish --tag=atlas-config` publishes `config/atlas.php`:
+
+| Option | Default | Purpose |
+| --- | --- | --- |
+| `auto_build` | `null` (= local only) | rebuild on request when the spec or config changed |
+| `output` | `storage_path('app/atlas')` | where the site is written |
+| `theme` | `default` | `default`, `emerald`, `ocean`, `violet`, `sunset`, `rose`, `mono` |
+| `logo`, `favicon` | `null` | file path or URL |
+| `css`, `js` | `[]` | extra files loaded after Atlas's own — override anything |
+| `lang` | `en` | page `lang` attribute |
+| `api` | `default` | which Scramble API to document (`Scramble::registerApi`) |
+| `route_prefix` | detected | set if Scramble's UI route moved and detection fails |
+| `allow_spec_html` | `false` | render HTML-authored descriptions verbatim — see [Security](#security) |
+| `node`, `timeout` | `node`, `300` | generator binary and time limit |
+
+`atlas:build` accepts `--spec=`, `--out=`, `--base=`, `--lang=` and
+`--allow-spec-html` for one-off builds.
 
 ### Deployment
 
-**`php artisan atlas:build` must run on every deploy.** Atlas is a static site
-generated ahead of time: without this step the published documentation keeps
-describing whatever the code looked like at the last build, silently and with no
-error anywhere. Skipping it does not break the docs — it makes them wrong, which
-is worse.
-
-Add it after dependencies are installed and the environment is in place:
+**Run `php artisan atlas:build` on every deploy**, after dependencies and
+`.env` are in place. Without it the published docs keep describing the code
+of the last build — silently. The build takes well under a second for a
+hundred endpoints; generating the spec dominates.
 
 ```bash
 composer install --no-dev --optimize-autoloader
 php artisan config:cache
-php artisan atlas:build          # <— docs follow the code
-php artisan migrate --force
+php artisan atlas:build
 ```
 
-The build needs a `node` binary on the machine that runs it (nothing else — the
-generator has no npm dependencies). If Node lives somewhere unusual, point
-`atlas.node` at it, e.g. `ATLAS_NODE=/usr/local/bin/node` in the environment.
-The command boots the application, so it belongs after `.env` is available. Cost
-is negligible — generating the specification dominates, the site itself takes
-well under a second for a hundred pages — so there is no reason to make it
-conditional.
+On zero-downtime setups (Envoyer, Deployer, Forge) `storage/` is shared
+between releases, which works but means a skipped build goes unnoticed. For
+atomic releases and rollbacks that include the docs, build into the release
+itself: `'output' => base_path('atlas-docs')`.
 
-On zero-downtime setups (Envoyer, Deployer, Forge with releases) `storage/` is
-usually a shared directory symlinked into each release. That works: the docs
-survive between releases and are overwritten in place by the build. It is also
-exactly why a missing build step goes unnoticed — the previous release's site
-is still there and still serves happily. For a strictly atomic swap the output
-has to leave the shared directory — pointing `--out` inside `storage/` changes
-nothing, since that path resolves through the symlink to the shared copy. Move
-it into the release's own code directory instead:
+## Standalone (any OpenAPI 3.x spec)
 
-```php
-// config/atlas.php — base_path() is release-local, storage_path() is not
-'output' => base_path('atlas-docs'),
+```bash
+git clone https://github.com/pjadanowski/atlas && cd atlas
+node build/index.mjs --spec path/to/openapi.json --out dist
+npm run preview           # http://localhost:4173, with the MCP endpoint
 ```
 
-Each release then builds and serves its own copy, and a rollback rolls the
-documentation back with it.
+| Flag | Default | Meaning |
+| --- | --- | --- |
+| `--spec` | `openapi.json` | source specification (JSON) |
+| `--out` | `dist` | output directory |
+| `--base` | — | sub-path the site is served from, e.g. `/docs/api` |
+| `--lang` | `en` | page `lang` attribute |
+| `--title` | `info.title` | override the site title |
+| `--theme` | `default` | color preset |
+| `--logo`, `--favicon` | — | file path or URL |
+| `--css`, `--js` | — | extra stylesheet / script, repeatable, loaded last |
+| `--allow-spec-html` | off | see [Security](#security) |
 
-In CI, the same call works as long as the job has PHP, the vendor directory and
-Node available; run it in whatever job produces the deployable artifact.
+Or from code:
 
-The package is covered by an integration test suite that boots a real Laravel
-application with Scramble installed (`composer test`).
+```js
+import { buildDocs } from './build/index.mjs';
+await buildDocs({ spec: 'openapi.json', out: 'dist', base: '/docs', theme: 'ocean' });
+```
+
+The output is plain files — host it anywhere (nginx, S3, GitHub Pages).
+Only `/mcp` needs a runtime: the preview server or the Laravel package.
+
+`npm run build` renders the bundled demo — the fictional *Orbit Travel API*
+in [`examples/demo/openapi.json`](examples/demo/openapi.json), which exercises
+every supported feature.
+
+## Customizing
+
+Redefine the design tokens from
+[`assets/css/00-tokens.css`](assets/css/00-tokens.css) in your own stylesheet:
+
+```css
+:root { --accent: #e0245e; --font-ui: 'Inter', system-ui, sans-serif; }
+```
+
+```bash
+node build/index.mjs --css brand.css --logo logo.svg
+```
+
+## Supported vendor extensions
+
+| Extension | Where | Effect |
+| --- | --- | --- |
+| `x-tagGroups` | root | sidebar sections grouping tags |
+| `x-displayName` | tag | label shown instead of the tag name |
+| `x-codeSamples` / `x-code-samples` | operation | hand-written samples, shown before generated ones |
+| `x-keywords` | operation | extra search terms (synonyms, legacy names) |
+
+Tags named `Parent - Child` nest in the sidebar.
+
+## MCP: your API inside the editor
+
+The site is also a [Model Context Protocol](https://modelcontextprotocol.io)
+server (Streamable HTTP, stateless) at `<docs>/mcp`. The **MCP** button in the
+top bar shows ready-made configuration for VS Code, Cursor and Claude Code.
+
+| Tool | Purpose |
+| --- | --- |
+| `search_api` | search endpoints and models — the same engine as ⌘K |
+| `list_endpoints` | every endpoint grouped by tag |
+| `get_endpoint` | one endpoint's parameters, body, responses and examples |
+| `get_model` | one schema's fields, types and example |
+
+It is read-only documentation access — nothing executes API calls — and sits
+behind the docs' own middleware.
+
+## Security
+
+- Descriptions are rendered through a small markdown subset and everything
+  else is escaped. `--allow-spec-html` / `allow_spec_html` lets
+  HTML-authored descriptions through **verbatim, unsanitized** — enable it
+  only for specs generated from your own code, never for third-party specs:
+  the docs' origin holds try-it credentials in `localStorage`.
+- Try-it credentials are stored only in the visitor's browser.
+- In Laravel, every Atlas route uses Scramble's `middleware`
+  (`RestrictedDocsAccess` by default).
+
+## Development
+
+```bash
+npm run build && npm run preview   # demo site
+npm run watch                      # rebuild on change
+npm test                           # generator + snippet tests (node:test)
+npm run test:e2e                   # try-it console in headless Chrome
+composer install && vendor/bin/phpunit   # Laravel integration
+```
+
+Read [`AGENTS.md`](AGENTS.md) and [`docs/`](docs) before contributing — they
+hold the design and architecture rules (static-first, progressive
+enhancement, no dependencies without a strong reason). Design decisions and
+their reasons are logged in [`docs/decisions.md`](docs/decisions.md).
+
+## License
+
+MIT — see [LICENSE](LICENSE). Bundled fonts (Instrument Sans, JetBrains
+Mono) are under the SIL Open Font License, see `assets/fonts/`.

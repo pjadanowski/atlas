@@ -23,7 +23,9 @@ const CHROME = ['google-chrome', 'google-chrome-stable', 'chromium', 'chromium-b
     return false;
   }
 });
-const skip = !CHROME || !existsSync(join(ROOT, 'dist', 'index.html')) ? 'needs Chrome and a built dist/' : false;
+const skip = !CHROME || typeof WebSocket === 'undefined' || !existsSync(join(ROOT, 'dist', 'index.html'))
+  ? 'needs Chrome, Node 22+ (global WebSocket) and a built dist/'
+  : false;
 
 let docs;
 let api;

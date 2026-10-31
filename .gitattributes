@@ -1,0 +1,16 @@
+# Keep the Composer dist lean: the package needs build/, assets/, src/,
+# config/ and resources/ at runtime — not the tests, demo or design docs.
+/.github            export-ignore
+/tests              export-ignore
+/examples           export-ignore
+/docs               export-ignore
+/.claude            export-ignore
+/AGENTS.md          export-ignore
+/DESIGN_PRINCIPLES.md export-ignore
+/CHANGELOG.md       export-ignore
+/phpunit.xml        export-ignore
+/.gitattributes     export-ignore
+/.gitignore         export-ignore
+
+*.woff2 binary
+*.png   binary
