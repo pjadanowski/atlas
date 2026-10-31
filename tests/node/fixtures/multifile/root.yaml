@@ -1,0 +1,33 @@
+# Fictional multi-file spec: root → components.yaml → schemas/Pet.yaml → back to root.
+openapi: 3.1.0
+info:
+  title: Multi-file kennel
+  version: '1.0'
+paths:
+  /pets:
+    get:
+      operationId: listPets
+      responses:
+        '200':
+          description: All pets
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: './components.yaml#/components/schemas/Pet'
+        default:
+          $ref: 'components.yaml#/components/responses/Error'
+  /status:
+    $ref: 'https://example.com/shared.yaml#/status'
+components:
+  schemas:
+    Owner:
+      type: object
+      properties:
+        name:
+          type: string
+        pets:
+          type: array
+          items:
+            $ref: 'schemas/Pet.yaml'

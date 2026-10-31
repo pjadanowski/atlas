@@ -1,0 +1,16 @@
+components:
+  schemas:
+    Pet:
+      $ref: 'schemas/Pet.yaml'
+    Error:
+      type: object
+      properties:
+        code:
+          type: integer
+  responses:
+    Error:
+      description: Something went wrong
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'

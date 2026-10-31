@@ -1,0 +1,18 @@
+type: object
+required: [name]
+properties:
+  name:
+    type: string
+  owner:
+    $ref: '../root.yaml#/components/schemas/Owner'
+  parent:
+    $ref: 'Pet.yaml'
+  tag:
+    $ref: './Tag.json'
+  kind:
+    oneOf:
+      - $ref: '../components.yaml#/components/schemas/Error'
+    discriminator:
+      propertyName: code
+      mapping:
+        broken: '../components.yaml#/components/schemas/Error'

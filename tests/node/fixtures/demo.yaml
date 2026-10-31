@@ -1,0 +1,3303 @@
+# Generated from examples/demo/openapi.json; regenerate after changing the demo:
+#   python3 -c "import json,yaml; print(yaml.safe_dump(json.load(open('examples/demo/openapi.json')), sort_keys=False, allow_unicode=True, width=60), end='')"
+openapi: 3.1.0
+info:
+  title: Orbit Travel API
+  version: 2.4.0
+  summary: Book seats on scheduled shuttles between orbital stations,
+    moons and planetary spaceports.
+  description: 'The **Orbit Travel API** powers every booking
+    surface of the (entirely fictional) Orbit Travel network —
+    from the kiosk at *Lunar Gateway* to partner travel agencies
+    on three planets.
+
+
+    It lets you search scheduled shuttle flights between stations,
+    hold and confirm bookings, manage passenger profiles and travel
+    documents, take payments and run the **Orbit Miles** loyalty
+    programme.
+
+
+    ### Getting started
+
+
+    1. Request sandbox credentials from the [partner portal](https://partners.orbit.example/signup).
+
+    2. Exchange your client credentials for an access token via
+    `POST /oauth/token`.
+
+    3. Send the token as `Authorization: Bearer <token>` on every
+    request.
+
+    4. Point your integration at `https://sandbox.orbit.example/v2`
+    until you pass certification.
+
+
+    All request and response bodies are JSON encoded as UTF-8.
+    Timestamps are ISO 8601 in **UTC** (`2087-03-14T09:30:00Z`),
+    money amounts are integers in the *minor unit* of the currency
+    (`12500` = 125.00 CRD).
+
+
+    ### Rate limits
+
+
+    Every response carries `X-RateLimit-Limit` and `X-RateLimit-Remaining`
+    headers.
+
+
+    | Plan | Requests per minute |
+
+    | --- | --- |
+
+    | Sandbox | 60 |
+
+    | Partner | 600 |
+
+    | Enterprise | 6000 |
+
+
+    When you exceed the limit the API answers with `429 Too Many
+    Requests` and a `Retry-After` header — back off and retry.
+
+
+    ### Errors
+
+
+    Errors follow [RFC 9457 problem details](https://www.rfc-editor.org/rfc/rfc9457):
+
+
+    - `400` — the request is malformed (bad JSON, wrong types)
+
+    - `401` / `403` — missing credentials or missing scope
+
+    - `404` — the resource does not exist **or** you cannot see
+    it
+
+    - `409` — a conflict, e.g. the seat was just taken by someone
+    else
+
+    - `422` — validation failed; see the `errors` map for field-level
+    messages
+
+
+    > Tip: every error contains a `trace_id`. Include it when
+    you contact [support](mailto:devs@orbit.example).'
+  termsOfService: https://orbit.example/legal/api-terms
+  contact:
+    name: Orbit Developer Relations
+    url: https://developers.orbit.example
+    email: devs@orbit.example
+  license:
+    name: MIT
+    identifier: MIT
+jsonSchemaDialect: https://spec.openapis.org/oas/3.1/dialect/base
+servers:
+- url: https://api.orbit.example/v2
+  description: Production
+- url: https://sandbox.orbit.example/v2
+  description: Sandbox — no real credits are charged
+- url: https://{region}.api.orbit.example/{basePath}
+  description: Regional edge cluster (lower latency near your
+    station)
+  variables:
+    region:
+      enum:
+      - luna
+      - mars
+      - europa
+      - ceres
+      default: luna
+      description: Edge region closest to your users
+    basePath:
+      default: v2
+      description: API version prefix
+security:
+- bearerAuth: []
+tags:
+- name: Stations
+  description: Spaceports, orbital stations and moon bases served
+    by the network. Stations can be nested — a **dock** belongs
+    to a **station**, which may belong to a **hub**.
+- name: Flights
+  description: Scheduled shuttle flights, seat maps and fare history.
+    Flight data is public but rate limited.
+- name: Bookings
+  description: Create, change and cancel bookings. A booking holds
+    one or more seats for up to **15 minutes** until it is paid.
+  externalDocs:
+    description: Booking lifecycle guide
+    url: https://developers.orbit.example/guides/booking-lifecycle
+- name: Passengers
+  x-displayName: Passengers & Documents
+  description: Passenger profiles and the travel documents (radiation
+    clearance, planetary visas) attached to them.
+- name: Payments
+  description: Charge bookings using cards, bank transfers or
+    crypto-free stellar wallets, and issue refunds.
+- name: Loyalty
+  x-displayName: Orbit Miles
+  description: 'The **Orbit Miles** loyalty programme: balances,
+    tiers and redemptions.'
+- name: Auth
+  x-displayName: Authentication
+  description: Obtain access tokens and inspect the current principal.
+- name: Reports
+  description: Operational reports and platform status for partners.
+x-tagGroups:
+- name: Booking
+  tags:
+  - Stations
+  - Flights
+  - Bookings
+  - Payments
+- name: Account
+  tags:
+  - Passengers
+  - Loyalty
+- name: Platform
+  tags:
+  - Auth
+  - Reports
+externalDocs:
+  description: Developer guides
+  url: https://developers.orbit.example/guides
+paths:
+  /oauth/token:
+    post:
+      tags:
+      - Auth
+      operationId: createAccessToken
+      summary: Obtain an access token
+      description: Exchange client credentials (or a refresh token)
+        for a short-lived JWT access token. Accepts both **JSON**
+        and classic **form-encoded** bodies, as per RFC 6749.
+      security: []
+      x-keywords:
+      - login
+      - authenticate
+      - jwt
+      - oauth
+      - sign in
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TokenRequest'
+            example:
+              grant_type: client_credentials
+              client_id: partner_42
+              client_secret: s3cr3t-0rb1t
+              scope: bookings:read bookings:write
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/TokenRequest'
+            example:
+              grant_type: client_credentials
+              client_id: partner_42
+              client_secret: s3cr3t-0rb1t
+      responses:
+        '200':
+          description: Token issued.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TokenResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+  /me:
+    get:
+      tags:
+      - Auth
+      operationId: getCurrentPrincipal
+      summary: Get the current principal
+      description: Returns who you are authenticated as. Works
+        with a bearer token **or** the web portal session cookie.
+      security:
+      - bearerAuth: []
+      - sessionCookie: []
+      parameters:
+      - name: orbit_locale
+        in: cookie
+        description: Preferred locale stored by the portal.
+        schema:
+          type: string
+          enum:
+          - en
+          - de
+          - fr
+          - ja
+          - pt-BR
+          default: en
+      responses:
+        '200':
+          description: The current principal.
+          headers:
+            X-RateLimit-Limit:
+              $ref: '#/components/headers/X-RateLimit-Limit'
+            X-RateLimit-Remaining:
+              $ref: '#/components/headers/X-RateLimit-Remaining'
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  kind:
+                    type: string
+                    enum:
+                    - partner
+                    - passenger
+                    example: partner
+                  id:
+                    type: string
+                    example: partner_42
+                  scopes:
+                    type: array
+                    items:
+                      type: string
+                    example:
+                    - bookings:read
+                    - bookings:write
+                  passenger:
+                    anyOf:
+                    - $ref: '#/components/schemas/Passenger'
+                    - type: 'null'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+        default:
+          $ref: '#/components/responses/ServerError'
+  /stations:
+    get:
+      tags:
+      - Stations
+      operationId: listStations
+      summary: List stations
+      description: Lists all stations served by the network. Public
+        — no authentication required.
+      security: []
+      x-keywords:
+      - spaceport
+      - airport
+      - dock
+      - hub
+      - destinations
+      parameters:
+      - $ref: '#/components/parameters/page'
+      - $ref: '#/components/parameters/per_page'
+      - name: body
+        in: query
+        description: 'Filter by one or more celestial bodies.
+          Repeat the parameter: `?body=moon&body=mars`.'
+        style: form
+        explode: true
+        schema:
+          type: array
+          items:
+            type: string
+            enum:
+            - earth
+            - moon
+            - mars
+            - europa
+            - ceres
+            - titan
+          uniqueItems: true
+        example:
+        - moon
+        - mars
+      - name: kind
+        in: query
+        schema:
+          type: string
+          enum:
+          - hub
+          - station
+          - dock
+          - surface_port
+      - name: q
+        in: query
+        description: Free-text search over name and code.
+        schema:
+          type: string
+          minLength: 2
+        examples:
+          byName:
+            summary: Search by name
+            value: gateway
+          byCode:
+            summary: Search by code
+            value: LGW
+      - name: include_docks
+        in: query
+        deprecated: true
+        description: Deprecated — use `kind=dock` instead.
+        schema:
+          type: boolean
+          default: false
+      responses:
+        '200':
+          description: A page of stations.
+          headers:
+            X-RateLimit-Limit:
+              $ref: '#/components/headers/X-RateLimit-Limit'
+            X-RateLimit-Remaining:
+              $ref: '#/components/headers/X-RateLimit-Remaining'
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                - data
+                - meta
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Station'
+                  meta:
+                    $ref: '#/components/schemas/PaginationMeta'
+                  links:
+                    $ref: '#/components/schemas/PaginationLinks'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+        default:
+          $ref: '#/components/responses/ServerError'
+  /stations/{stationCode}:
+    parameters:
+    - name: stationCode
+      in: path
+      required: true
+      description: Station code (shared by all operations on this
+        path).
+      schema:
+        type: string
+        pattern: ^[A-Z]{3,5}(-[0-9A-Z]{1,4})?$
+      example: LGW-1
+    get:
+      tags:
+      - Stations
+      operationId: getStation
+      summary: Get a station
+      description: Returns a single station including its `parent_station`
+        chain.
+      security: []
+      responses:
+        '200':
+          description: The station.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Station'
+              example:
+                id: 6c4f2b1e-8a0d-4d2b-9a3e-1f2c3d4e5f60
+                code: LGW-1
+                name: Lunar Gateway — Dock 1
+                kind: dock
+                body: moon
+                timezone: UTC
+                gravity_g: 0
+                position:
+                  x: 1.0026
+                  y: -0.0019
+                  z: 2.0e-05
+                amenities:
+                - lounge
+                parent_station:
+                  id: 1a2b3c4d-5e6f-4a7b-8c9d-0e1f2a3b4c5d
+                  code: LGW
+                  name: Lunar Gateway
+                  kind: hub
+                  body: moon
+                  parent_station: null
+                created_at: '2081-06-01T00:00:00Z'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /stations/{stationCode}/departures:
+    parameters:
+    - name: stationCode
+      in: path
+      required: true
+      schema:
+        type: string
+      example: LGW
+    get:
+      tags:
+      - Stations
+      operationId: listStationDepartures
+      summary: List departures from a station
+      description: '**Deprecated.** Use `GET /flights/search?origin={code}`
+        instead. This endpoint will be removed on 2088-01-01.'
+      deprecated: true
+      security: []
+      parameters:
+      - name: date
+        in: query
+        schema:
+          type: string
+          format: date
+        example: '2087-03-14'
+      responses:
+        '200':
+          description: Departures.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Flight'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /flights/search:
+    get:
+      tags:
+      - Flights
+      operationId: searchFlights
+      summary: Search flights
+      description: 'Find bookable flights between two stations.
+
+
+        - Results are sorted by `departs_at` unless `sort` is
+        given.
+
+        - Use `cabin_class` repeatedly to search several cabins.
+
+        - Fares are quoted in `currency`.'
+      x-keywords:
+      - find
+      - availability
+      - schedule
+      - timetable
+      - shuttle
+      parameters:
+      - name: origin
+        in: query
+        required: true
+        description: Origin station code.
+        schema:
+          type: string
+          pattern: ^[A-Z]{3,5}(-[0-9A-Z]{1,4})?$
+        example: LGW
+      - name: destination
+        in: query
+        required: true
+        description: Destination station code.
+        schema:
+          type: string
+        examples:
+          mars:
+            summary: Mars Olympus Port
+            value: OLYM
+          europa:
+            summary: Europa Deep Station
+            value: EUR-D4
+      - name: date
+        in: query
+        required: true
+        schema:
+          type: string
+          format: date
+        example: '2087-03-14'
+      - name: passengers
+        in: query
+        schema:
+          type: integer
+          minimum: 1
+          maximum: 9
+          default: 1
+      - name: cabin_class
+        in: query
+        style: form
+        explode: true
+        schema:
+          type: array
+          items:
+            $ref: '#/components/schemas/CabinClass'
+          minItems: 1
+        example:
+        - economy
+        - premium
+      - name: max_price
+        in: query
+        description: Upper bound in major units.
+        schema:
+          type: number
+          format: double
+          exclusiveMinimum: 0
+        example: 2500
+      - name: currency
+        in: query
+        schema:
+          type: string
+          enum:
+          - CRD
+          - EUR
+          - USD
+          - MRS
+          default: CRD
+      - name: sort
+        in: query
+        schema:
+          type: string
+          enum:
+          - departs_at
+          - -departs_at
+          - price
+          - duration
+          default: departs_at
+      - name: Accept-Language
+        in: header
+        schema:
+          type: string
+          default: en
+        example: en-GB
+      - $ref: '#/components/parameters/RequestId'
+      responses:
+        '200':
+          description: Matching flights.
+          headers:
+            X-RateLimit-Limit:
+              $ref: '#/components/headers/X-RateLimit-Limit'
+            X-RateLimit-Remaining:
+              $ref: '#/components/headers/X-RateLimit-Remaining'
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Flight'
+                  searched_at:
+                    type: string
+                    format: date-time
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+        default:
+          $ref: '#/components/responses/ServerError'
+  /flights/{flightId}:
+    get:
+      tags:
+      - Flights
+      operationId: getFlight
+      summary: Get a flight
+      description: 'Supports conditional requests: send the `ETag`
+        you got earlier as `If-None-Match` to receive `304 Not
+        Modified`.'
+      parameters:
+      - $ref: '#/components/parameters/FlightId'
+      - name: If-None-Match
+        in: header
+        schema:
+          type: string
+        example: W/"a1b2c3"
+      responses:
+        '200':
+          description: The flight.
+          headers:
+            ETag:
+              $ref: '#/components/headers/ETag'
+            X-RateLimit-Limit:
+              $ref: '#/components/headers/X-RateLimit-Limit'
+            X-RateLimit-Remaining:
+              $ref: '#/components/headers/X-RateLimit-Remaining'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Flight'
+        '304':
+          description: Not modified.
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+        default:
+          $ref: '#/components/responses/ServerError'
+  /flights/{flightId}/seats:
+    get:
+      tags:
+      - Flights
+      operationId: getFlightSeatMap
+      summary: Get the seat map
+      parameters:
+      - $ref: '#/components/parameters/FlightId'
+      - name: cabin_class
+        in: query
+        schema:
+          $ref: '#/components/schemas/CabinClass'
+      responses:
+        '200':
+          description: Seat map grouped by deck.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SeatMap'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+        default:
+          $ref: '#/components/responses/ServerError'
+  /flights/{flightId}/fare-history:
+    get:
+      tags:
+      - Flights
+      operationId: getFlightFareHistory
+      summary: Get fare history
+      description: Lowest fare per day for the last `days` days.
+      parameters:
+      - $ref: '#/components/parameters/FlightId'
+      - name: days
+        in: query
+        schema:
+          type: integer
+          minimum: 1
+          maximum: 90
+          default: 30
+      responses:
+        '200':
+          description: Fare history.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FareHistory'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+        default:
+          $ref: '#/components/responses/ServerError'
+  /bookings:
+    get:
+      tags:
+      - Bookings
+      operationId: listBookings
+      summary: List bookings
+      security:
+      - oauth2:
+        - bookings:read
+      - bearerAuth: []
+      parameters:
+      - $ref: '#/components/parameters/page'
+      - $ref: '#/components/parameters/per_page'
+      - name: status
+        in: query
+        style: form
+        explode: true
+        schema:
+          type: array
+          items:
+            type: string
+            enum:
+            - held
+            - confirmed
+            - checked_in
+            - cancelled
+            - expired
+        example:
+        - held
+        - confirmed
+      - name: created_after
+        in: query
+        schema:
+          type: string
+          format: date-time
+      responses:
+        '200':
+          description: A page of bookings.
+          headers:
+            X-RateLimit-Limit:
+              $ref: '#/components/headers/X-RateLimit-Limit'
+            X-RateLimit-Remaining:
+              $ref: '#/components/headers/X-RateLimit-Remaining'
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                - data
+                - meta
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Booking'
+                  meta:
+                    $ref: '#/components/schemas/PaginationMeta'
+                  links:
+                    $ref: '#/components/schemas/PaginationLinks'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+        default:
+          $ref: '#/components/responses/ServerError'
+    post:
+      tags:
+      - Bookings
+      operationId: createBooking
+      summary: Create a booking
+      description: 'Holds the requested seats for **15 minutes**.
+        Pay within that window via `POST /payments` or the hold
+        expires.
+
+
+        If you pass `callback_url`, we `POST` the final status
+        of the booking to it once it is confirmed or expires.'
+      security:
+      - oauth2:
+        - bookings:write
+      - bearerAuth: []
+      x-keywords:
+      - reserve
+      - hold
+      - book
+      - ticket
+      parameters:
+      - $ref: '#/components/parameters/IdempotencyKey'
+      - $ref: '#/components/parameters/RequestId'
+      requestBody:
+        required: true
+        description: The flight and passengers to book.
+        content:
+          application/json:
+            schema:
+              allOf:
+              - $ref: '#/components/schemas/Booking'
+              - type: object
+                properties:
+                  callback_url:
+                    type:
+                    - string
+                    - 'null'
+                    format: uri
+                    description: Where to send the status callback.
+                    example: https://agency.example/hooks/orbit
+            examples:
+              single:
+                summary: One passenger, explicit seat
+                description: 'The simplest booking: one passenger
+                  with a concrete seat code.'
+                value:
+                  flight_id: b7a1e9c2-55aa-4c1e-8f00-0b1d2e3f4a5b
+                  passengers:
+                  - passenger_id: 2d9f6a8e-1b3c-4e5f-8a7b-9c0d1e2f3a4b
+                    seat: 14C
+              family:
+                summary: Family with seat preferences
+                value:
+                  flight_id: b7a1e9c2-55aa-4c1e-8f00-0b1d2e3f4a5b
+                  passengers:
+                  - passenger_id: 2d9f6a8e-1b3c-4e5f-8a7b-9c0d1e2f3a4b
+                    seat:
+                      window: true
+                    cabin_class: premium
+                  - passenger_id: 7e8f9a0b-1c2d-4e3f-a4b5-c6d7e8f9a0b1
+                    seat:
+                      window: false
+                      near_exit: true
+                    cabin_class: premium
+                  add_ons:
+                  - extra_baggage
+                  - travel_insurance
+                  notes: Child travelling, needs booster harness.
+              suite:
+                summary: Zero-G suite with EVA walk
+                value:
+                  flight_id: b7a1e9c2-55aa-4c1e-8f00-0b1d2e3f4a5b
+                  passengers:
+                  - passenger_id: 2d9f6a8e-1b3c-4e5f-8a7b-9c0d1e2f3a4b
+                    cabin_class: zero_g_suite
+                  add_ons:
+                  - eva_walk
+                  - viewport_upgrade
+      callbacks:
+        bookingStatus:
+          '{$request.body#/callback_url}':
+            post:
+              summary: Booking status callback
+              description: Sent once when the booking is confirmed
+                or the hold expires.
+              requestBody:
+                required: true
+                content:
+                  application/json:
+                    schema:
+                      type: object
+                      required:
+                      - booking_id
+                      - status
+                      properties:
+                        booking_id:
+                          type: string
+                          format: uuid
+                        status:
+                          type: string
+                          enum:
+                          - confirmed
+                          - expired
+                        occurred_at:
+                          type: string
+                          format: date-time
+              responses:
+                '204':
+                  description: Callback received. Any 2xx acknowledges
+                    it.
+      x-codeSamples:
+      - lang: Shell
+        label: cURL
+        source: "curl -X POST https://api.orbit.example/v2/bookings\
+          \ \\\n  -H \"Authorization: Bearer $ORBIT_TOKEN\" \\\
+          \n  -H \"Idempotency-Key: $(uuidgen)\" \\\n  -H \"Content-Type:\
+          \ application/json\" \\\n  -d '{\"flight_id\":\"b7a1e9c2-55aa-4c1e-8f00-0b1d2e3f4a5b\"\
+          ,\"passengers\":[{\"passenger_id\":\"2d9f6a8e-1b3c-4e5f-8a7b-9c0d1e2f3a4b\"\
+          ,\"seat\":\"14C\"}]}'"
+      - lang: PHP
+        label: PHP (Guzzle)
+        source: "<?php\n$client = new \\GuzzleHttp\\Client(['base_uri'\
+          \ => 'https://api.orbit.example/v2/']);\n$response =\
+          \ $client->post('bookings', [\n    'headers' => [\n\
+          \        'Authorization'   => 'Bearer ' . getenv('ORBIT_TOKEN'),\n\
+          \        'Idempotency-Key' => bin2hex(random_bytes(16)),\n\
+          \    ],\n    'json' => [\n        'flight_id'  => 'b7a1e9c2-55aa-4c1e-8f00-0b1d2e3f4a5b',\n\
+          \        'passengers' => [['passenger_id' => '2d9f6a8e-1b3c-4e5f-8a7b-9c0d1e2f3a4b',\
+          \ 'seat' => '14C']],\n    ],\n]);\n$booking = json_decode((string)\
+          \ $response->getBody(), true);"
+      responses:
+        '201':
+          description: Booking held.
+          headers:
+            Location:
+              $ref: '#/components/headers/Location'
+            X-RateLimit-Limit:
+              $ref: '#/components/headers/X-RateLimit-Limit'
+            X-RateLimit-Remaining:
+              $ref: '#/components/headers/X-RateLimit-Remaining'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Booking'
+              examples:
+                held:
+                  $ref: '#/components/examples/HeldBooking'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '409':
+          description: One of the requested seats was taken in
+            the meantime.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+              example:
+                type: https://developers.orbit.example/problems/seat-taken
+                title: Seat no longer available
+                status: 409
+                detail: Seat 14C on OR412 was booked 2 seconds
+                  ago.
+        '422':
+          $ref: '#/components/responses/ValidationError'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+        default:
+          $ref: '#/components/responses/ServerError'
+  /bookings/export:
+    get:
+      tags:
+      - Bookings
+      operationId: exportBookings
+      summary: Export bookings
+      description: Exports bookings as JSON or CSV depending on
+        the `Accept` header.
+      security:
+      - oauth2:
+        - bookings:read
+        - reports:read
+      parameters:
+      - name: from
+        in: query
+        required: true
+        schema:
+          type: string
+          format: date
+        example: '2087-03-01'
+      - name: to
+        in: query
+        required: true
+        schema:
+          type: string
+          format: date
+        example: '2087-03-31'
+      responses:
+        '200':
+          description: The export.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Booking'
+            text/csv:
+              schema:
+                type: string
+              example: 'reference,flight,status,total
+
+                ORB-7KQ2XD,OR412,confirmed,125000
+
+                ORB-M4RS01,OR877,held,98000
+
+                '
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+        default:
+          $ref: '#/components/responses/ServerError'
+  /bookings/{bookingId}:
+    parameters:
+    - name: bookingId
+      in: path
+      required: true
+      description: Booking UUID or reference (shared path-level
+        parameter).
+      schema:
+        type: string
+      examples:
+        uuid:
+          summary: By UUID
+          value: 9a7c1d2e-3f40-4b5c-8d6e-7f8091a2b3c4
+        reference:
+          summary: By reference
+          value: ORB-7KQ2XD
+    get:
+      tags:
+      - Bookings
+      operationId: getBooking
+      summary: Get a booking
+      security:
+      - oauth2:
+        - bookings:read
+      - bearerAuth: []
+      responses:
+        '200':
+          description: The booking.
+          headers:
+            ETag:
+              $ref: '#/components/headers/ETag'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Booking'
+              examples:
+                held:
+                  $ref: '#/components/examples/HeldBooking'
+                confirmed:
+                  summary: A confirmed booking
+                  value:
+                    id: 9a7c1d2e-3f40-4b5c-8d6e-7f8091a2b3c4
+                    reference: ORB-7KQ2XD
+                    flight_id: b7a1e9c2-55aa-4c1e-8f00-0b1d2e3f4a5b
+                    status: confirmed
+                    passengers:
+                    - passenger_id: 2d9f6a8e-1b3c-4e5f-8a7b-9c0d1e2f3a4b
+                      seat: 14C
+                      cabin_class: economy
+                    add_ons: []
+                    total:
+                      amount: 125000
+                      currency: CRD
+                    notes: null
+                    hold_expires_at: null
+                    created_at: '2087-03-01T10:00:00Z'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+        default:
+          $ref: '#/components/responses/ServerError'
+    patch:
+      tags:
+      - Bookings
+      operationId: updateBooking
+      summary: Update a booking
+      description: Change add-ons or notes. Seat changes go through
+        `POST /bookings/{bookingId}/seat-change` (coming soon).
+      security:
+      - oauth2:
+        - bookings:write
+      parameters:
+      - name: If-Match
+        in: header
+        required: true
+        description: ETag from `getBooking` — prevents lost updates.
+        schema:
+          type: string
+        example: W/"a1b2c3"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/BookingPatch'
+            examples:
+              addBaggage:
+                summary: Add extra baggage
+                value:
+                  add_ons:
+                  - priority_boarding
+                  - extra_baggage
+              clearNotes:
+                summary: Clear the notes
+                value:
+                  notes: null
+      responses:
+        '200':
+          description: Updated booking.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Booking'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          description: The booking changed since you read it (ETag
+            mismatch).
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+        default:
+          $ref: '#/components/responses/ServerError'
+    delete:
+      tags:
+      - Bookings
+      operationId: cancelBooking
+      summary: Cancel a booking
+      description: Cancels the booking. Paid bookings are refunded
+        according to the fare rules.
+      security:
+      - oauth2:
+        - bookings:write
+      - bearerAuth: []
+      parameters:
+      - name: reason
+        in: query
+        schema:
+          type: string
+          enum:
+          - changed_plans
+          - medical
+          - duplicate
+          - other
+          default: changed_plans
+      responses:
+        '204':
+          description: Cancelled. No content.
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          description: Already departed — cannot cancel.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+        default:
+          $ref: '#/components/responses/ServerError'
+  /bookings/{bookingId}/boarding-pass:
+    get:
+      tags:
+      - Bookings
+      operationId: getBoardingPass
+      summary: Download the boarding pass
+      parameters:
+      - name: bookingId
+        in: path
+        required: true
+        schema:
+          type: string
+        example: ORB-7KQ2XD
+      - name: format
+        in: query
+        schema:
+          type: string
+          enum:
+          - pdf
+          - pkpass
+          default: pdf
+      responses:
+        '200':
+          description: The boarding pass.
+          content:
+            application/pdf:
+              schema:
+                type: string
+                format: binary
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+        default:
+          $ref: '#/components/responses/ServerError'
+  /passengers:
+    get:
+      tags:
+      - Passengers
+      operationId: listPassengers
+      summary: List passengers
+      security:
+      - openId:
+        - profile
+      - bearerAuth: []
+      parameters:
+      - $ref: '#/components/parameters/page'
+      - $ref: '#/components/parameters/per_page'
+      - name: email
+        in: query
+        schema:
+          type: string
+          format: email
+      responses:
+        '200':
+          description: A page of passengers.
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                - data
+                - meta
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Passenger'
+                  meta:
+                    $ref: '#/components/schemas/PaginationMeta'
+                  links:
+                    $ref: '#/components/schemas/PaginationLinks'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+        default:
+          $ref: '#/components/responses/ServerError'
+    post:
+      tags:
+      - Passengers
+      operationId: createPassenger
+      summary: Create a passenger
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Passenger'
+            examples:
+              minimal:
+                summary: Required fields only
+                value:
+                  first_name: Ada
+                  last_name: Okonkwo
+                  email: ada.okonkwo@mail.example
+                  date_of_birth: '2049-07-20'
+              full:
+                summary: Full profile with portal password
+                value:
+                  first_name: Ada
+                  last_name: Okonkwo
+                  email: ada.okonkwo@mail.example
+                  phone: '+4915112345678'
+                  date_of_birth: '2049-07-20'
+                  password: correct-horse-battery-staple
+                  contact:
+                    address:
+                      habitat: Tranquility Dome 3
+                      sector: Ring C
+                      body: moon
+                      postal_code: LN-40421
+                    emergency:
+                      name: Grace Okonkwo
+                      relation: sibling
+                      address:
+                        habitat: Olympus Port
+                        body: mars
+                  preferences:
+                    cabin_class: premium
+                    meal: vegetarian
+                    newsletter: true
+      responses:
+        '201':
+          description: Passenger created.
+          headers:
+            Location:
+              $ref: '#/components/headers/Location'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Passenger'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '409':
+          description: A passenger with this email already exists.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+        default:
+          $ref: '#/components/responses/ServerError'
+  /passengers/{passengerId}:
+    parameters:
+    - $ref: '#/components/parameters/PassengerId'
+    get:
+      tags:
+      - Passengers
+      operationId: getPassenger
+      summary: Get a passenger
+      security:
+      - openId:
+        - profile
+      - oauth2:
+        - profile:read
+      - bearerAuth: []
+      responses:
+        '200':
+          description: The passenger.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Passenger'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+        default:
+          $ref: '#/components/responses/ServerError'
+    put:
+      tags:
+      - Passengers
+      operationId: replacePassenger
+      summary: Replace a passenger
+      security:
+      - oauth2:
+        - profile:write
+      - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Passenger'
+      responses:
+        '200':
+          description: Updated passenger.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Passenger'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+        default:
+          $ref: '#/components/responses/ServerError'
+    delete:
+      tags:
+      - Passengers
+      operationId: deletePassenger
+      summary: Delete a passenger
+      description: Erases the profile (right to be forgotten).
+        Bookings are anonymised, not deleted.
+      responses:
+        '204':
+          description: Deleted.
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+        default:
+          $ref: '#/components/responses/ServerError'
+  /passengers/{passengerId}/documents:
+    parameters:
+    - $ref: '#/components/parameters/PassengerId'
+    get:
+      tags:
+      - Passengers
+      operationId: listPassengerDocuments
+      summary: List travel documents
+      responses:
+        '200':
+          description: Documents.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/TravelDocument'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+        default:
+          $ref: '#/components/responses/ServerError'
+    post:
+      tags:
+      - Passengers
+      operationId: uploadPassengerDocument
+      summary: Upload a travel document
+      description: Upload a scan as `multipart/form-data`. Max
+        **10 MB**; PDF, PNG or JPEG.
+      x-keywords:
+      - upload
+      - passport
+      - visa
+      - scan
+      - attachment
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required:
+              - file
+              - kind
+              properties:
+                file:
+                  type: string
+                  format: binary
+                  description: The document scan.
+                kind:
+                  type: string
+                  enum:
+                  - passport
+                  - planetary_visa
+                  - radiation_clearance
+                  - medical_certificate
+                expires_on:
+                  type:
+                  - string
+                  - 'null'
+                  format: date
+                tags:
+                  type: array
+                  items:
+                    type: string
+                  maxItems: 5
+            encoding:
+              file:
+                contentType: application/pdf, image/png, image/jpeg
+      responses:
+        '201':
+          description: Document stored.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TravelDocument'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+        default:
+          $ref: '#/components/responses/ServerError'
+  /payments:
+    post:
+      tags:
+      - Payments
+      operationId: createPayment
+      summary: Pay for a booking
+      description: Charges a held booking. Requires **both** a
+        bearer token **and** the partner API key (two schemes
+        combined).
+      security:
+      - bearerAuth: []
+        apiKeyHeader: []
+      parameters:
+      - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Payment'
+            examples:
+              card:
+                summary: Card payment
+                value:
+                  booking_id: 9a7c1d2e-3f40-4b5c-8d6e-7f8091a2b3c4
+                  amount:
+                    amount: 125000
+                    currency: CRD
+                  method:
+                    type: card
+                    card_number: '4242424242424242'
+                    cvc: '123'
+                    expiry: 09/89
+                    holder: ADA OKONKWO
+              bank:
+                summary: Bank transfer
+                value:
+                  booking_id: 9a7c1d2e-3f40-4b5c-8d6e-7f8091a2b3c4
+                  amount:
+                    amount: 125000
+                    currency: EUR
+                  method:
+                    type: bank_transfer
+                    iban: LU28 0019 4006 4475 0000
+              wallet:
+                summary: Stellar wallet
+                value:
+                  booking_id: 9a7c1d2e-3f40-4b5c-8d6e-7f8091a2b3c4
+                  amount:
+                    amount: 125000
+                    currency: CRD
+                  method:
+                    type: wallet
+                    wallet_id: wal_01HZX3K9
+                    provider: stellarpay
+      responses:
+        '201':
+          description: Payment accepted.
+          headers:
+            Location:
+              $ref: '#/components/headers/Location'
+            X-RateLimit-Limit:
+              $ref: '#/components/headers/X-RateLimit-Limit'
+            X-RateLimit-Remaining:
+              $ref: '#/components/headers/X-RateLimit-Remaining'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Payment'
+              examples:
+                captured:
+                  summary: Captured card payment
+                  value:
+                    id: c1d2e3f4-a5b6-4c7d-8e9f-0a1b2c3d4e5f
+                    booking_id: 9a7c1d2e-3f40-4b5c-8d6e-7f8091a2b3c4
+                    amount:
+                      amount: 125000
+                      currency: CRD
+                    method:
+                      type: card
+                      expiry: 09/89
+                      holder: ADA OKONKWO
+                      last4: '4242'
+                      brand: nova
+                    status: captured
+                    failure_reason: null
+                    created_at: '2087-03-01T10:04:10Z'
+                pending:
+                  summary: Pending bank transfer
+                  value:
+                    id: d2e3f4a5-b6c7-4d8e-9f0a-1b2c3d4e5f6a
+                    booking_id: 9a7c1d2e-3f40-4b5c-8d6e-7f8091a2b3c4
+                    amount:
+                      amount: 125000
+                      currency: EUR
+                    method:
+                      type: bank_transfer
+                      iban: LU28 0019 4006 4475 0000
+                      reference: ORB-7KQ2XD
+                    status: pending
+                    failure_reason: null
+                    created_at: '2087-03-01T10:04:10Z'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '402':
+          description: Payment declined.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '409':
+          description: Booking already paid or hold expired.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+        default:
+          $ref: '#/components/responses/ServerError'
+  /payments/{paymentId}:
+    get:
+      tags:
+      - Payments
+      operationId: getPayment
+      summary: Get a payment
+      parameters:
+      - name: paymentId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        '200':
+          description: The payment.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Payment'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+        default:
+          $ref: '#/components/responses/ServerError'
+  /payments/{paymentId}/refunds:
+    post:
+      tags:
+      - Payments
+      operationId: refundPayment
+      summary: Refund a payment
+      description: Full or partial refund. Requires the `payments:refund`
+        OAuth scope.
+      security:
+      - oauth2:
+        - payments:write
+        - payments:refund
+      parameters:
+      - name: paymentId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Refund'
+            example:
+              amount:
+                amount: 50000
+                currency: CRD
+              reason: flight_cancelled
+      responses:
+        '201':
+          description: Refund created.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Refund'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+        default:
+          $ref: '#/components/responses/ServerError'
+  /payment-methods:
+    get:
+      tags:
+      - Payments
+      operationId: listSavedPaymentMethods
+      summary: List saved payment methods
+      security:
+      - oauth2:
+        - profile:read
+      responses:
+        '200':
+          description: Saved methods (write-only fields omitted).
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/PaymentMethod'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+        default:
+          $ref: '#/components/responses/ServerError'
+  /loyalty/account:
+    get:
+      tags:
+      - Loyalty
+      operationId: getLoyaltyAccount
+      summary: Get the Orbit Miles account
+      security:
+      - oauth2:
+        - loyalty:read
+      responses:
+        '200':
+          description: The account.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LoyaltyAccount'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+        default:
+          $ref: '#/components/responses/ServerError'
+  /loyalty/transactions:
+    get:
+      tags:
+      - Loyalty
+      operationId: listLoyaltyTransactions
+      summary: List mile transactions
+      security:
+      - oauth2:
+        - loyalty:read
+      parameters:
+      - $ref: '#/components/parameters/page'
+      - $ref: '#/components/parameters/per_page'
+      - name: kind
+        in: query
+        style: form
+        explode: false
+        description: 'Comma-separated list (`explode: false`).'
+        schema:
+          type: array
+          items:
+            type: string
+            enum:
+            - earn
+            - redeem
+            - expire
+            - adjust
+        example:
+        - earn
+        - redeem
+      responses:
+        '200':
+          description: Transactions.
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                - data
+                - meta
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/LoyaltyTransaction'
+                  meta:
+                    $ref: '#/components/schemas/PaginationMeta'
+                  links:
+                    $ref: '#/components/schemas/PaginationLinks'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+        default:
+          $ref: '#/components/responses/ServerError'
+  /loyalty/redemptions:
+    post:
+      tags:
+      - Loyalty
+      operationId: redeemMiles
+      summary: Redeem miles
+      description: Redeem miles against a booking. 100 miles =
+        1 CRD.
+      security:
+      - oauth2:
+        - loyalty:redeem
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+              - booking_id
+              - miles
+              properties:
+                booking_id:
+                  type: string
+                  format: uuid
+                miles:
+                  type: integer
+                  format: int64
+                  minimum: 1000
+                  multipleOf: 100
+                  example: 25000
+      responses:
+        '201':
+          description: Redeemed.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LoyaltyTransaction'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '409':
+          description: Insufficient balance.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/Problem'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+        default:
+          $ref: '#/components/responses/ServerError'
+  /loyalty/tiers:
+    get:
+      tags:
+      - Loyalty
+      operationId: listLoyaltyTiers
+      summary: List loyalty tiers
+      security: []
+      responses:
+        '200':
+          description: All tiers, lowest first.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/LoyaltyTier'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+  /reports/revenue:
+    get:
+      tags:
+      - Reports
+      operationId: getRevenueReport
+      summary: Get the revenue report
+      description: Authenticate with **either** HTTP basic **or**
+        the `api_key` query parameter (alternatives).
+      security:
+      - basicAuth: []
+      - apiKeyQuery: []
+      parameters:
+      - name: month
+        in: query
+        required: true
+        schema:
+          type: string
+          pattern: ^[0-9]{4}-(0[1-9]|1[0-2])$
+        example: 2087-03
+      - name: group_by
+        in: query
+        schema:
+          type: string
+          enum:
+          - route
+          - cabin_class
+          - station
+          default: route
+      responses:
+        '200':
+          description: Revenue per group key (map of string →
+            number).
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  month:
+                    type: string
+                    example: 2087-03
+                  currency:
+                    type: string
+                    example: CRD
+                  totals:
+                    type: object
+                    additionalProperties:
+                      type: number
+                      format: double
+                    example:
+                      LGW→OLYM: 1820450.5
+                      LGW→EUR-D4: 932100
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+        default:
+          $ref: '#/components/responses/ServerError'
+  /status:
+    get:
+      tags:
+      - Reports
+      operationId: getPlatformStatus
+      summary: Get platform status
+      security: []
+      responses:
+        '200':
+          description: Status of each subsystem.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    enum:
+                    - operational
+                    - degraded
+                    - outage
+                  components:
+                    type: object
+                    additionalProperties:
+                      type: object
+                      properties:
+                        status:
+                          type: string
+                          enum:
+                          - operational
+                          - degraded
+                          - outage
+                        latency_ms:
+                          type:
+                          - number
+                          - 'null'
+              example:
+                status: operational
+                components:
+                  bookings:
+                    status: operational
+                    latency_ms: 42
+                  payments:
+                    status: degraded
+                    latency_ms: 870
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+webhooks:
+  booking.confirmed:
+    post:
+      operationId: onBookingConfirmed
+      summary: Booking confirmed
+      tags:
+      - Bookings
+      description: Sent when a booking is paid and confirmed.
+        Respond with any `2xx` within 10 seconds.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              allOf:
+              - $ref: '#/components/schemas/WebhookEvent'
+              - type: object
+                required:
+                - data
+                properties:
+                  type:
+                    const: booking.confirmed
+                  data:
+                    $ref: '#/components/schemas/Booking'
+                    description: The confirmed booking.
+      responses:
+        '200':
+          description: Acknowledged.
+  payment.failed:
+    post:
+      operationId: onPaymentFailed
+      summary: Payment failed
+      tags:
+      - Payments
+      description: Sent when an asynchronous payment (e.g. bank
+        transfer) fails.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              allOf:
+              - $ref: '#/components/schemas/WebhookEvent'
+              - type: object
+                required:
+                - data
+                properties:
+                  type:
+                    const: payment.failed
+                  data:
+                    type: object
+                    properties:
+                      payment:
+                        $ref: '#/components/schemas/Payment'
+                      retryable:
+                        type: boolean
+                      failure_code:
+                        type: string
+                        enum:
+                        - insufficient_funds
+                        - expired_card
+                        - bank_rejected
+                        - timeout
+      responses:
+        '200':
+          description: Acknowledged.
+components:
+  schemas:
+    Problem:
+      title: Problem
+      type: object
+      description: An RFC 9457 problem details object.
+      required:
+      - type
+      - title
+      - status
+      properties:
+        type:
+          type: string
+          format: uri
+          example: https://developers.orbit.example/problems/not-found
+        title:
+          type: string
+          example: Resource not found
+        status:
+          type: integer
+          minimum: 400
+          maximum: 599
+          example: 404
+        detail:
+          type:
+          - string
+          - 'null'
+          example: No booking with reference ORB-7KQ2XD exists.
+        trace_id:
+          type: string
+          format: uuid
+          readOnly: true
+          example: 0f8e5b8c-3c1d-4f7e-9a51-2b6d7d2e9c11
+    ValidationProblem:
+      title: ValidationProblem
+      description: A problem with field-level validation messages.
+      allOf:
+      - $ref: '#/components/schemas/Problem'
+      - type: object
+        required:
+        - errors
+        properties:
+          errors:
+            type: object
+            description: Map of field path to a list of messages.
+            additionalProperties:
+              type: array
+              items:
+                type: string
+              minItems: 1
+            example:
+              passengers.0.email:
+              - The email must be a valid email address.
+              flight_id:
+              - The selected flight is sold out.
+    PaginationMeta:
+      title: PaginationMeta
+      type: object
+      required:
+      - current_page
+      - per_page
+      - total
+      properties:
+        current_page:
+          type: integer
+          minimum: 1
+          example: 1
+        per_page:
+          type: integer
+          minimum: 1
+          maximum: 100
+          example: 25
+        total:
+          type: integer
+          minimum: 0
+          example: 132
+        last_page:
+          type: integer
+          minimum: 1
+          example: 6
+    PaginationLinks:
+      title: PaginationLinks
+      type: object
+      properties:
+        first:
+          type: string
+          format: uri
+          example: https://api.orbit.example/v2/bookings?page=1
+        prev:
+          type:
+          - string
+          - 'null'
+          format: uri
+          example: null
+        next:
+          type:
+          - string
+          - 'null'
+          format: uri
+          example: https://api.orbit.example/v2/bookings?page=2
+    Money:
+      title: Money
+      type: object
+      description: An amount in the minor unit of a currency.
+      required:
+      - amount
+      - currency
+      properties:
+        amount:
+          type: integer
+          format: int64
+          exclusiveMinimum: 0
+          description: Amount in minor units (e.g. cents). Must
+            be strictly positive.
+          example: 12500
+        currency:
+          type: string
+          enum:
+          - CRD
+          - EUR
+          - USD
+          - MRS
+          default: CRD
+          description: '`CRD` = Galactic Credits, `MRS` = Martian
+            Sol.'
+          example: CRD
+    Coordinates:
+      title: Coordinates
+      type: object
+      description: Heliocentric position in astronomical units.
+      properties:
+        x:
+          type: number
+          format: double
+          example: 1.0012
+        y:
+          type: number
+          format: double
+          example: -0.0021
+        z:
+          type: number
+          format: double
+          example: 3.0e-05
+    Station:
+      title: Station
+      type: object
+      description: 'A place a shuttle can dock. Stations form
+        a tree: `parent_station` points to the enclosing station
+        (recursive).'
+      required:
+      - id
+      - code
+      - name
+      - kind
+      properties:
+        id:
+          type: string
+          format: uuid
+          readOnly: true
+          example: 6c4f2b1e-8a0d-4d2b-9a3e-1f2c3d4e5f60
+        code:
+          type: string
+          pattern: ^[A-Z]{3,5}(-[0-9A-Z]{1,4})?$
+          description: Short IATA-style station code.
+          examples:
+          - LGW-1
+          - MARS
+          - EUR-D4
+        name:
+          type: string
+          example: Lunar Gateway — Dock 1
+        kind:
+          type: string
+          enum:
+          - hub
+          - station
+          - dock
+          - surface_port
+          example: dock
+        body:
+          type: string
+          description: Celestial body the station orbits or sits
+            on.
+          enum:
+          - earth
+          - moon
+          - mars
+          - europa
+          - ceres
+          - titan
+          example: moon
+        timezone:
+          type: string
+          default: UTC
+          example: UTC
+        gravity_g:
+          type: number
+          format: double
+          minimum: 0
+          exclusiveMaximum: 10
+          description: Surface or spin gravity in g.
+          example: 0.165
+        position:
+          $ref: '#/components/schemas/Coordinates'
+          description: Current position (updated every 10 minutes).
+        amenities:
+          type: array
+          uniqueItems: true
+          items:
+            type: string
+            enum:
+            - lounge
+            - medbay
+            - duty_free
+            - hotel
+            - zero_g_gym
+          example:
+          - lounge
+          - medbay
+        parent_station:
+          anyOf:
+          - $ref: '#/components/schemas/Station'
+          - type: 'null'
+          description: The enclosing station, or `null` for a
+            top-level hub.
+        created_at:
+          type: string
+          format: date-time
+          readOnly: true
+          example: '2081-06-01T00:00:00Z'
+    Flight:
+      title: Flight
+      type: object
+      required:
+      - id
+      - number
+      - origin
+      - destination
+      - departs_at
+      - arrives_at
+      - status
+      properties:
+        id:
+          type: string
+          format: uuid
+          readOnly: true
+          example: b7a1e9c2-55aa-4c1e-8f00-0b1d2e3f4a5b
+        number:
+          type: string
+          pattern: ^OR[0-9]{3,4}$
+          example: OR412
+        origin:
+          $ref: '#/components/schemas/Station'
+          description: Departure station.
+        destination:
+          $ref: '#/components/schemas/Station'
+          description: Arrival station.
+        departs_at:
+          type: string
+          format: date-time
+          example: '2087-03-14T09:30:00Z'
+        arrives_at:
+          type: string
+          format: date-time
+          example: '2087-03-17T02:10:00Z'
+        duration_minutes:
+          type: integer
+          minimum: 1
+          example: 3880
+        status:
+          type: string
+          enum:
+          - scheduled
+          - boarding
+          - departed
+          - in_transit
+          - docked
+          - cancelled
+          default: scheduled
+          example: scheduled
+        vessel:
+          type: object
+          description: The shuttle operating this flight.
+          properties:
+            registration:
+              type: string
+              example: OV-HELIOS-7
+            model:
+              type: string
+              example: Heliotrope 900
+            cabin:
+              type: object
+              properties:
+                decks:
+                  type: integer
+                  enum:
+                  - 1
+                  - 2
+                  - 3
+                  example: 2
+                life_support:
+                  type: object
+                  description: 'Third-level nesting: life-support
+                    characteristics.'
+                  properties:
+                    oxygen_reserve_hours:
+                      type: number
+                      format: double
+                      exclusiveMinimum: 0
+                      example: 96.5
+                    pressure_kpa:
+                      type: number
+                      format: double
+                      example: 101.3
+                    certified_at:
+                      type: string
+                      format: date
+                      example: '2086-11-02'
+        lowest_fare:
+          $ref: '#/components/schemas/Money'
+        gate:
+          type:
+          - string
+          - 'null'
+          example: B12
+        gate_code:
+          type:
+          - string
+          - 'null'
+          deprecated: true
+          description: Use `gate` instead. Will be removed in
+            v3.
+          example: B-12
+    Seat:
+      title: Seat
+      type: object
+      properties:
+        code:
+          type: string
+          pattern: ^[0-9]{1,2}[A-H]$
+          example: 14C
+        cabin_class:
+          $ref: '#/components/schemas/CabinClass'
+        available:
+          type: boolean
+          example: true
+        window:
+          type: boolean
+          default: false
+          example: true
+        price:
+          $ref: '#/components/schemas/Money'
+    CabinClass:
+      title: CabinClass
+      type: string
+      enum:
+      - economy
+      - premium
+      - zero_g_suite
+      default: economy
+      description: Cabin class. `zero_g_suite` includes a private
+        viewport.
+    SeatMap:
+      title: SeatMap
+      type: object
+      description: Seats grouped by deck name. Keys are arbitrary
+        deck labels.
+      properties:
+        flight_id:
+          type: string
+          format: uuid
+          example: b7a1e9c2-55aa-4c1e-8f00-0b1d2e3f4a5b
+        decks:
+          type: object
+          description: Map of deck label → deck details (map of
+            objects).
+          additionalProperties:
+            type: object
+            properties:
+              rows:
+                type: integer
+                example: 20
+              seats:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Seat'
+          example:
+            upper:
+              rows: 8
+              seats:
+              - code: 1A
+                cabin_class: zero_g_suite
+                available: true
+                window: true
+                price:
+                  amount: 480000
+                  currency: CRD
+    FareHistory:
+      title: FareHistory
+      type: object
+      description: Lowest fare per day, keyed by ISO date (map
+        of string → number).
+      additionalProperties:
+        type: number
+        format: double
+      example:
+        '2087-03-10': 1250
+        '2087-03-11': 1199.5
+        '2087-03-12': 1310.25
+    Address:
+      title: Address
+      type: object
+      properties:
+        habitat:
+          type: string
+          example: Tranquility Dome 3
+        sector:
+          type:
+          - string
+          - 'null'
+          example: Ring C
+        body:
+          type: string
+          example: moon
+        postal_code:
+          type:
+          - string
+          - 'null'
+          example: LN-40421
+    Passenger:
+      title: Passenger
+      type: object
+      description: A traveller profile. The same schema is used
+        for requests (read-only fields are ignored) and responses
+        (write-only fields are never returned).
+      required:
+      - first_name
+      - last_name
+      - email
+      - date_of_birth
+      properties:
+        id:
+          type: string
+          format: uuid
+          readOnly: true
+          example: 2d9f6a8e-1b3c-4e5f-8a7b-9c0d1e2f3a4b
+        first_name:
+          type: string
+          maxLength: 80
+          example: Ada
+        middle_name:
+          type:
+          - string
+          - 'null'
+          deprecated: true
+          description: Merged into `first_name` since v2.2.
+          example: null
+        last_name:
+          type: string
+          maxLength: 80
+          example: Okonkwo
+        email:
+          type: string
+          format: email
+          example: ada.okonkwo@mail.example
+        phone:
+          type:
+          - string
+          - 'null'
+          pattern: ^\+[0-9]{6,15}$
+          example: '+4915112345678'
+        date_of_birth:
+          type: string
+          format: date
+          example: '2049-07-20'
+        password:
+          type: string
+          format: password
+          writeOnly: true
+          minLength: 12
+          description: Password for the self-service portal. Never
+            returned.
+          example: correct-horse-battery-staple
+        contact:
+          type: object
+          description: 'Contact details (nested 3 levels: contact
+            → emergency → address).'
+          properties:
+            address:
+              $ref: '#/components/schemas/Address'
+            emergency:
+              type:
+              - object
+              - 'null'
+              properties:
+                name:
+                  type: string
+                  example: Grace Okonkwo
+                relation:
+                  type: string
+                  enum:
+                  - spouse
+                  - parent
+                  - child
+                  - sibling
+                  - friend
+                  - other
+                  example: sibling
+                address:
+                  $ref: '#/components/schemas/Address'
+        preferences:
+          type: object
+          properties:
+            cabin_class:
+              $ref: '#/components/schemas/CabinClass'
+            meal:
+              type: string
+              enum:
+              - standard
+              - vegetarian
+              - vegan
+              - hydroponic_only
+              default: standard
+            newsletter:
+              type: boolean
+              default: false
+        loyalty_number:
+          type:
+          - string
+          - 'null'
+          pattern: ^OM[0-9]{8}$
+          readOnly: true
+          example: OM00421337
+        created_at:
+          type: string
+          format: date-time
+          readOnly: true
+          example: '2086-01-15T12:00:00Z'
+        updated_at:
+          type: string
+          format: date-time
+          readOnly: true
+          example: '2087-02-01T08:45:00Z'
+    TravelDocument:
+      title: TravelDocument
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+          readOnly: true
+        kind:
+          type: string
+          enum:
+          - passport
+          - planetary_visa
+          - radiation_clearance
+          - medical_certificate
+          example: radiation_clearance
+        file_name:
+          type: string
+          example: clearance-2087.pdf
+        size_bytes:
+          type: integer
+          format: int64
+          example: 482133
+        expires_on:
+          type:
+          - string
+          - 'null'
+          format: date
+          example: '2088-03-01'
+        download_url:
+          type: string
+          format: uri
+          readOnly: true
+          example: https://files.orbit.example/d/9f2c
+        created_at:
+          type: string
+          format: date-time
+          readOnly: true
+    BookingPassenger:
+      title: BookingPassenger
+      type: object
+      required:
+      - passenger_id
+      properties:
+        passenger_id:
+          type: string
+          format: uuid
+          example: 2d9f6a8e-1b3c-4e5f-8a7b-9c0d1e2f3a4b
+        seat:
+          description: Either an explicit seat code or a preference
+            the system resolves for you.
+          anyOf:
+          - type: string
+            title: Seat code
+            pattern: ^[0-9]{1,2}[A-H]$
+            example: 14C
+          - type: object
+            title: Seat preference
+            properties:
+              window:
+                type: boolean
+                default: true
+              near_exit:
+                type: boolean
+                default: false
+        cabin_class:
+          $ref: '#/components/schemas/CabinClass'
+    Booking:
+      title: Booking
+      type: object
+      required:
+      - flight_id
+      - passengers
+      properties:
+        id:
+          type: string
+          format: uuid
+          readOnly: true
+          example: 9a7c1d2e-3f40-4b5c-8d6e-7f8091a2b3c4
+        reference:
+          type: string
+          readOnly: true
+          pattern: ^ORB-[A-Z0-9]{6}$
+          examples:
+          - ORB-7KQ2XD
+          - ORB-M4RS01
+        flight_id:
+          type: string
+          format: uuid
+          example: b7a1e9c2-55aa-4c1e-8f00-0b1d2e3f4a5b
+        status:
+          type: string
+          enum:
+          - held
+          - confirmed
+          - checked_in
+          - cancelled
+          - expired
+          readOnly: true
+          default: held
+          example: held
+        passengers:
+          type: array
+          minItems: 1
+          maxItems: 9
+          items:
+            $ref: '#/components/schemas/BookingPassenger'
+        add_ons:
+          type: array
+          uniqueItems: true
+          maxItems: 5
+          items:
+            type: string
+            enum:
+            - extra_baggage
+            - priority_boarding
+            - eva_walk
+            - viewport_upgrade
+            - travel_insurance
+          default: []
+          example:
+          - priority_boarding
+        total:
+          $ref: '#/components/schemas/Money'
+          description: Total price including fees and taxes.
+          readOnly: true
+        notes:
+          type:
+          - string
+          - 'null'
+          maxLength: 500
+          example: Travelling with a service animal (cat).
+        hold_expires_at:
+          type:
+          - string
+          - 'null'
+          format: date-time
+          readOnly: true
+          example: '2087-03-01T10:15:00Z'
+        created_at:
+          type: string
+          format: date-time
+          readOnly: true
+          example: '2087-03-01T10:00:00Z'
+    BookingPatch:
+      title: BookingPatch
+      type: object
+      description: Partial update. Omitted fields are left unchanged;
+        `null` clears a nullable field.
+      minProperties: 1
+      properties:
+        add_ons:
+          type: array
+          uniqueItems: true
+          items:
+            type: string
+        notes:
+          type:
+          - string
+          - 'null'
+          maxLength: 500
+    PaymentMethod:
+      title: PaymentMethod
+      description: How the booking is paid. Discriminated by `type`.
+      oneOf:
+      - $ref: '#/components/schemas/CardPayment'
+      - $ref: '#/components/schemas/BankTransferPayment'
+      - $ref: '#/components/schemas/WalletPayment'
+      discriminator:
+        propertyName: type
+        mapping:
+          card: '#/components/schemas/CardPayment'
+          bank_transfer: '#/components/schemas/BankTransferPayment'
+          wallet: '#/components/schemas/WalletPayment'
+    CardPayment:
+      title: CardPayment
+      type: object
+      required:
+      - type
+      - expiry
+      - holder
+      description: Card details. `card_number` and `cvc` are required
+        when creating a payment but, being write-only, are never
+        returned.
+      properties:
+        type:
+          type: string
+          const: card
+        card_number:
+          type: string
+          writeOnly: true
+          pattern: ^[0-9]{12,19}$
+          description: Full PAN. Write-only — never returned.
+          example: '4242424242424242'
+        cvc:
+          type: string
+          format: password
+          writeOnly: true
+          pattern: ^[0-9]{3,4}$
+          example: '123'
+        expiry:
+          type: string
+          pattern: ^(0[1-9]|1[0-2])/[0-9]{2}$
+          example: 09/89
+        holder:
+          type: string
+          example: ADA OKONKWO
+        last4:
+          type: string
+          readOnly: true
+          example: '4242'
+        brand:
+          type: string
+          readOnly: true
+          enum:
+          - nova
+          - pulsar
+          - quasar
+          example: nova
+    BankTransferPayment:
+      title: BankTransferPayment
+      type: object
+      required:
+      - type
+      - iban
+      properties:
+        type:
+          type: string
+          const: bank_transfer
+        iban:
+          type: string
+          example: LU28 0019 4006 4475 0000
+        reference:
+          type:
+          - string
+          - 'null'
+          readOnly: true
+          example: ORB-7KQ2XD
+    WalletPayment:
+      title: WalletPayment
+      type: object
+      required:
+      - type
+      - wallet_id
+      properties:
+        type:
+          type: string
+          const: wallet
+        wallet_id:
+          type: string
+          example: wal_01HZX3K9
+        provider:
+          type: string
+          enum:
+          - stellarpay
+          - cometcash
+          example: stellarpay
+    Payment:
+      title: Payment
+      type: object
+      required:
+      - booking_id
+      - method
+      properties:
+        id:
+          type: string
+          format: uuid
+          readOnly: true
+          example: c1d2e3f4-a5b6-4c7d-8e9f-0a1b2c3d4e5f
+        booking_id:
+          type: string
+          format: uuid
+          example: 9a7c1d2e-3f40-4b5c-8d6e-7f8091a2b3c4
+        amount:
+          $ref: '#/components/schemas/Money'
+        method:
+          $ref: '#/components/schemas/PaymentMethod'
+        status:
+          type: string
+          enum:
+          - pending
+          - authorized
+          - captured
+          - failed
+          - refunded
+          readOnly: true
+          example: captured
+        failure_reason:
+          type:
+          - string
+          - 'null'
+          readOnly: true
+          example: null
+        created_at:
+          type: string
+          format: date-time
+          readOnly: true
+    Refund:
+      title: Refund
+      type: object
+      required:
+      - amount
+      properties:
+        id:
+          type: string
+          format: uuid
+          readOnly: true
+        amount:
+          $ref: '#/components/schemas/Money'
+        reason:
+          type: string
+          enum:
+          - requested_by_customer
+          - flight_cancelled
+          - duplicate
+          - other
+          default: requested_by_customer
+        status:
+          type: string
+          readOnly: true
+          enum:
+          - pending
+          - succeeded
+          - failed
+    Resource:
+      title: Resource
+      type: object
+      description: Base shape shared by persisted resources.
+      required:
+      - id
+      properties:
+        id:
+          type: string
+          format: uuid
+          readOnly: true
+        created_at:
+          type: string
+          format: date-time
+          readOnly: true
+    LoyaltyAccount:
+      title: LoyaltyAccount
+      description: Composed with `allOf` from the base `Resource`.
+      allOf:
+      - $ref: '#/components/schemas/Resource'
+      - type: object
+        properties:
+          number:
+            type: string
+            pattern: ^OM[0-9]{8}$
+            example: OM00421337
+          balance:
+            type: integer
+            format: int64
+            minimum: 0
+            example: 184200
+          tier:
+            $ref: '#/components/schemas/LoyaltyTier'
+          balance_by_partner:
+            type: object
+            description: Miles earned per partner programme.
+            additionalProperties:
+              type: integer
+              format: int64
+            example:
+              orbit: 150000
+              ring_hotels: 34200
+          expiring:
+            type: array
+            items:
+              type: object
+              properties:
+                miles:
+                  type: integer
+                  example: 5000
+                expires_on:
+                  type: string
+                  format: date
+                  example: '2087-12-31'
+    LoyaltyTier:
+      title: LoyaltyTier
+      type: object
+      properties:
+        name:
+          type: string
+          enum:
+          - comet
+          - planet
+          - star
+          - nebula
+          example: star
+        level:
+          type: integer
+          enum:
+          - 1
+          - 2
+          - 3
+          - 4
+          description: Numeric tier level (1 = lowest).
+          example: 3
+        threshold:
+          type: integer
+          minimum: 0
+          example: 100000
+        perks:
+          type: array
+          items:
+            type: string
+          example:
+          - Lounge access
+          - Free viewport upgrade
+        earn_multiplier:
+          type: number
+          format: double
+          exclusiveMinimum: 0
+          exclusiveMaximum: 5
+          example: 1.5
+    LoyaltyTransaction:
+      title: LoyaltyTransaction
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+          readOnly: true
+        kind:
+          type: string
+          enum:
+          - earn
+          - redeem
+          - expire
+          - adjust
+          example: earn
+        miles:
+          type: integer
+          format: int64
+          example: 4120
+        booking_reference:
+          type:
+          - string
+          - 'null'
+          example: ORB-7KQ2XD
+        occurred_at:
+          type: string
+          format: date-time
+          example: '2087-03-17T02:10:00Z'
+    TokenResponse:
+      title: TokenResponse
+      type: object
+      required:
+      - access_token
+      - token_type
+      - expires_in
+      properties:
+        access_token:
+          type: string
+          example: eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJwYXJ0bmVyXzQyIn0.c2lnbmF0dXJl
+        token_type:
+          type: string
+          const: Bearer
+        expires_in:
+          type: integer
+          example: 3600
+        scope:
+          type: string
+          example: bookings:read bookings:write
+    TokenRequest:
+      title: TokenRequest
+      type: object
+      required:
+      - grant_type
+      - client_id
+      - client_secret
+      properties:
+        grant_type:
+          type: string
+          enum:
+          - client_credentials
+          - refresh_token
+          default: client_credentials
+        client_id:
+          type: string
+          example: partner_42
+        client_secret:
+          type: string
+          format: password
+          writeOnly: true
+          example: s3cr3t-0rb1t
+        scope:
+          type:
+          - string
+          - 'null'
+          example: bookings:read bookings:write
+    WebhookEvent:
+      title: WebhookEvent
+      type: object
+      description: Envelope shared by all webhook deliveries.
+      required:
+      - id
+      - type
+      - created_at
+      properties:
+        id:
+          type: string
+          format: uuid
+          example: e1f2a3b4-c5d6-4e7f-8a9b-0c1d2e3f4a5b
+        type:
+          type: string
+          example: booking.confirmed
+        created_at:
+          type: string
+          format: date-time
+          example: '2087-03-01T10:04:12Z'
+        attempt:
+          type: integer
+          minimum: 1
+          default: 1
+  parameters:
+    page:
+      name: page
+      in: query
+      description: Page number (1-based).
+      schema:
+        type: integer
+        minimum: 1
+        default: 1
+      example: 1
+    per_page:
+      name: per_page
+      in: query
+      description: Items per page.
+      schema:
+        type: integer
+        minimum: 1
+        maximum: 100
+        default: 25
+      example: 25
+    RequestId:
+      name: X-Request-Id
+      in: header
+      description: Optional client-generated id echoed back for
+        tracing.
+      schema:
+        type: string
+        format: uuid
+      example: 3f1c8a2e-0d4b-4e6f-9a1b-2c3d4e5f6a7b
+    IdempotencyKey:
+      name: Idempotency-Key
+      in: header
+      required: true
+      description: Unique key making the request safe to retry.
+        Reuse returns the original response for **24 hours**.
+      schema:
+        type: string
+        minLength: 16
+        maxLength: 64
+      example: b9c1f0e2-7a44-4d0e-bf59-3a6e1c2d4f80
+    PassengerId:
+      name: passengerId
+      in: path
+      required: true
+      description: Passenger UUID.
+      schema:
+        type: string
+        format: uuid
+      example: 2d9f6a8e-1b3c-4e5f-8a7b-9c0d1e2f3a4b
+    FlightId:
+      name: flightId
+      in: path
+      required: true
+      description: Flight UUID.
+      schema:
+        type: string
+        format: uuid
+      example: b7a1e9c2-55aa-4c1e-8f00-0b1d2e3f4a5b
+  headers:
+    X-RateLimit-Limit:
+      description: Requests allowed in the current window.
+      schema:
+        type: integer
+      example: 600
+    X-RateLimit-Remaining:
+      description: Requests left in the current window.
+      schema:
+        type: integer
+      example: 597
+    ETag:
+      description: Entity tag for conditional requests.
+      schema:
+        type: string
+      example: W/"a1b2c3"
+    Location:
+      description: URL of the created resource.
+      schema:
+        type: string
+        format: uri
+  responses:
+    BadRequest:
+      description: The request could not be parsed.
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problem'
+          example:
+            type: https://developers.orbit.example/problems/bad-request
+            title: Malformed JSON
+            status: 400
+            detail: Unexpected token } at position 112.
+    Unauthorized:
+      description: Missing or invalid credentials.
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problem'
+          example:
+            type: https://developers.orbit.example/problems/unauthorized
+            title: Unauthenticated
+            status: 401
+            detail: The access token expired 4 minutes ago.
+    Forbidden:
+      description: The credentials lack the required scope.
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problem'
+          example:
+            type: https://developers.orbit.example/problems/forbidden
+            title: Insufficient scope
+            status: 403
+            detail: Requires scope `payments:refund`.
+    NotFound:
+      description: The resource does not exist or is not visible
+        to you.
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problem'
+          example:
+            type: https://developers.orbit.example/problems/not-found
+            title: Resource not found
+            status: 404
+            detail: null
+    ValidationError:
+      description: Validation failed.
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/ValidationProblem'
+          example:
+            type: https://developers.orbit.example/problems/validation
+            title: The given data was invalid
+            status: 422
+            errors:
+              passengers.0.passenger_id:
+              - The selected passenger id is invalid.
+    TooManyRequests:
+      description: Rate limit exceeded.
+      headers:
+        Retry-After:
+          description: Seconds to wait before retrying.
+          schema:
+            type: integer
+          example: 30
+        X-RateLimit-Limit:
+          $ref: '#/components/headers/X-RateLimit-Limit'
+        X-RateLimit-Remaining:
+          $ref: '#/components/headers/X-RateLimit-Remaining'
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problem'
+    ServerError:
+      description: Unexpected error.
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problem'
+  examples:
+    HeldBooking:
+      summary: A freshly held booking
+      value:
+        id: 9a7c1d2e-3f40-4b5c-8d6e-7f8091a2b3c4
+        reference: ORB-7KQ2XD
+        flight_id: b7a1e9c2-55aa-4c1e-8f00-0b1d2e3f4a5b
+        status: held
+        passengers:
+        - passenger_id: 2d9f6a8e-1b3c-4e5f-8a7b-9c0d1e2f3a4b
+          seat: 14C
+          cabin_class: economy
+        add_ons:
+        - priority_boarding
+        total:
+          amount: 125000
+          currency: CRD
+        notes: null
+        hold_expires_at: '2087-03-01T10:15:00Z'
+        created_at: '2087-03-01T10:00:00Z'
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: Access token from `POST /oauth/token`.
+    basicAuth:
+      type: http
+      scheme: basic
+      description: Reporting credentials (partner id + reporting
+        secret).
+    apiKeyHeader:
+      type: apiKey
+      in: header
+      name: X-API-Key
+      description: Partner API key, sent as a header.
+    apiKeyQuery:
+      type: apiKey
+      in: query
+      name: api_key
+      description: Partner API key as a query parameter. Only
+        for legacy report downloads.
+    sessionCookie:
+      type: apiKey
+      in: cookie
+      name: orbit_session
+      description: Session cookie set by the Orbit web portal.
+    oauth2:
+      type: oauth2
+      description: OAuth 2.0. Use **client credentials** for server-to-server,
+        **authorization code** for acting on behalf of a passenger.
+      flows:
+        clientCredentials:
+          tokenUrl: https://auth.orbit.example/oauth/token
+          scopes:
+            bookings:read: Read bookings
+            bookings:write: Create and change bookings
+            payments:write: Take payments
+            payments:refund: Issue refunds
+            reports:read: Download reports
+        authorizationCode:
+          authorizationUrl: https://auth.orbit.example/oauth/authorize
+          tokenUrl: https://auth.orbit.example/oauth/token
+          refreshUrl: https://auth.orbit.example/oauth/refresh
+          scopes:
+            profile:read: Read the passenger profile
+            profile:write: Update the passenger profile
+            loyalty:read: Read Orbit Miles balance
+            loyalty:redeem: Redeem Orbit Miles
+            bookings:read: Read bookings
+            bookings:write: Create and change bookings
+    openId:
+      type: openIdConnect
+      openIdConnectUrl: https://auth.orbit.example/.well-known/openid-configuration
+      description: OpenID Connect for passenger-facing apps.
