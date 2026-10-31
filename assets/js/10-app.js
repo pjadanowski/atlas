@@ -123,7 +123,122 @@
     return usable ? usable.join(' + ') : '';
   }
 
-  window.atlasAuth = { apply: applyAuth, describe };
+  // ---- WS-Security for SOAP operations (header built by the try-it runtime) ----
+  const WSSE_KEY = 'atlas:wsse';
+  let wsse = {};
+  try {
+    wsse = JSON.parse(localStorage.getItem(WSSE_KEY) || '{}') || {};
+  } catch {
+    wsse = {};
+  }
+
+  function saveWsse() {
+    try {
+      localStorage.setItem(WSSE_KEY, JSON.stringify(wsse));
+    } catch {
+      /* Storage blocked — settings last for this page only. */
+    }
+    refreshWsseUI();
+  }
+
+  function wsseConfigured() {
+    return Boolean(wsse.user || wsse.token);
+  }
+
+  function refreshWsseUI() {
+    const state = document.querySelector('[data-wsse-state]');
+    if (state) state.textContent = wsseConfigured() ? 'Set' : '';
+    for (const row of document.querySelectorAll('[data-wsse-row]')) {
+      const base = row.getAttribute('title') || row.textContent;
+      row.textContent = wsseConfigured() ? `${base} ✓` : `${base} · not set`;
+      row.classList.toggle('is-set', wsseConfigured());
+    }
+  }
+
+  for (const input of document.querySelectorAll('[data-wsse-field]')) {
+    const name = input.dataset.wsseField;
+    if (input.type === 'checkbox') input.checked = Boolean(wsse[name]);
+    else if (wsse[name] !== undefined) input.value = wsse[name];
+    const update = () => {
+      wsse[name] = input.type === 'checkbox' ? input.checked : input.value;
+      saveWsse();
+    };
+    input.addEventListener('input', update);
+    input.addEventListener('change', update);
+  }
+  refreshWsseUI();
+
+  document.addEventListener('click', (event) => {
+    if (event.target.closest('[data-sts-request]')) requestStsToken();
+  });
+
+  const escapeXml = (value) => String(value ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+
+  /**
+   * WS-Trust Issue against the STS, authenticated with a UsernameToken
+   * (PasswordText — the usual bootstrap). The issued token (whatever sits in
+   * RequestedSecurityToken: SAML assertion, SecurityContextToken, …) is
+   * stored as XML and placed into wsse:Security of later SOAP requests.
+   */
+  async function requestStsToken() {
+    const status = document.querySelector('[data-sts-status]');
+    const url = wsse.stsUrl;
+    if (!url) {
+      status.textContent = 'Enter the STS address first';
+      return;
+    }
+    const trust = wsse.stsVersion === '2005' ? 'http://schemas.xmlsoap.org/ws/2005/02/trust' : 'http://docs.oasis-open.org/ws-sx/ws-trust/200512';
+    const soap12 = wsse.stsSoap === '1.2';
+    const envNs = soap12 ? 'http://www.w3.org/2003/05/soap-envelope' : 'http://schemas.xmlsoap.org/soap/envelope/';
+    const action = `${trust}/RST/Issue`;
+    const tokenType = wsse.stsTokenType || (wsse.stsVersion === '2005' ? 'http://schemas.xmlsoap.org/ws/2005/02/sc/sct' : '');
+    const appliesTo = wsse.stsAppliesTo
+      ? `<wsp:AppliesTo xmlns:wsp="http://schemas.xmlsoap.org/ws/2004/09/policy"><wsa:EndpointReference><wsa:Address>${escapeXml(wsse.stsAppliesTo)}</wsa:Address></wsa:EndpointReference></wsp:AppliesTo>`
+      : '';
+    const envelope = `<soap:Envelope xmlns:soap="${envNs}" xmlns:wsa="http://www.w3.org/2005/08/addressing" xmlns:wst="${trust}">
+  <soap:Header>
+    <wsa:Action>${action}</wsa:Action>
+    <wsa:To>${escapeXml(url)}</wsa:To>
+    <wsse:Security xmlns:wsse="http://docs.oasis-open.org/wss/2004/01/oasis-200401-wss-wssecurity-secext-1.0.xsd">
+      <wsse:UsernameToken>
+        <wsse:Username>${escapeXml(wsse.user)}</wsse:Username>
+        <wsse:Password Type="http://docs.oasis-open.org/wss/2004/01/oasis-200401-wss-username-token-profile-1.0#PasswordText">${escapeXml(wsse.pass)}</wsse:Password>
+      </wsse:UsernameToken>
+    </wsse:Security>
+  </soap:Header>
+  <soap:Body>
+    <wst:RequestSecurityToken>
+      ${tokenType ? `<wst:TokenType>${escapeXml(tokenType)}</wst:TokenType>` : ''}
+      <wst:RequestType>${trust}/Issue</wst:RequestType>
+      ${appliesTo}
+    </wst:RequestSecurityToken>
+  </soap:Body>
+</soap:Envelope>`;
+    const headers = soap12
+      ? { 'Content-Type': `application/soap+xml; charset=utf-8; action="${action}"` }
+      : { 'Content-Type': 'text/xml; charset=utf-8', SOAPAction: `"${action}"` };
+    status.textContent = 'Requesting…';
+    try {
+      const response = await fetch(url, { method: 'POST', headers, body: envelope });
+      const doc = new DOMParser().parseFromString(await response.text(), 'application/xml');
+      const holder = [...doc.getElementsByTagNameNS('*', 'RequestedSecurityToken')][0];
+      const token = holder && [...holder.children][0];
+      if (!token) {
+        const fault = [...doc.getElementsByTagNameNS('*', 'faultstring'), ...doc.getElementsByTagNameNS('*', 'Text')][0];
+        status.textContent = `Failed: ${fault?.textContent?.trim() || `HTTP ${response.status}, no token in the response`}`;
+        return;
+      }
+      wsse.token = new XMLSerializer().serializeToString(token);
+      saveWsse();
+      const area = document.querySelector('[data-wsse-field="token"]');
+      if (area) area.value = wsse.token;
+      status.textContent = `Token received (${token.localName})`;
+    } catch {
+      status.textContent = 'Network or CORS error — the STS must allow requests from this origin';
+    }
+  }
+
+  window.atlasAuth = { apply: applyAuth, describe, wsse: () => wsse };
 
   function refreshAuthUI() {
     const any = schemes.some(isConfigured);
@@ -172,7 +287,15 @@
         const scheme = schemes.find((entry) => entry.id === section.dataset.authSection);
         return accepted.includes(section.dataset.authSection) || (scheme && isConfigured(scheme));
       };
-      if (sections.some(relevant)) for (const section of sections) section.open = relevant(section);
+      // On a SOAP operation only WS-Security applies.
+      const soapPage = document.querySelector('[data-tryit]')?.dataset.wsse !== undefined;
+      const wsseSection = authDialog.querySelector('[data-wsse-section]');
+      if (soapPage && wsseSection) {
+        for (const section of sections) section.open = false;
+        wsseSection.open = true;
+      } else if (sections.some(relevant)) {
+        for (const section of sections) section.open = relevant(section);
+      }
       authDialog.showModal();
       authDialog.querySelector('[data-auth-section][open] [data-auth-scheme]')?.focus();
     }

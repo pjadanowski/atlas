@@ -3,6 +3,7 @@ import { url } from '../url.mjs';
 import { highlight } from '../highlight.mjs';
 import { constraintList, schemaBody, typeLabel } from './schema.mjs';
 import { codePanel, requestPanel, responsePanel } from './codecol.mjs';
+import { wsseSummary } from './tryit.mjs';
 import { copyButton, enumPills, expandButton, methodBadge, statusBadge } from './ui.mjs';
 
 /** Main-column article for one endpoint: header + tabbed documentation. */
@@ -52,6 +53,7 @@ function endpointHeader(endpoint, model) {
   ${route}
   ${endpoint.description ? `<div class="endpoint-desc">${mdBlock(endpoint.description)}</div>` : ''}
   ${metaStrip(endpoint)}
+  ${endpoint.soap?.security ? wsseNotes(endpoint.soap.security) : ''}
   ${endpoint.externalDocs?.url ? `<p class="endpoint-extdocs"><a href="${esc(endpoint.externalDocs.url)}" rel="noopener" target="_blank">${esc(endpoint.externalDocs.description ?? 'External documentation')} ↗</a></p>` : ''}
 </header>`;
 }
@@ -95,6 +97,37 @@ function securityItem(endpoint) {
   return metaItem(lockIcon(), `${label}${scopeHtml}`, sub);
 }
 
+/** What the WS-Security policy means for a client, in plain words. */
+function wsseNotes(security) {
+  const notes = [];
+  for (const token of security.tokens) {
+    if (token.type === 'username') {
+      notes.push(
+        token.digest
+          ? 'Send a <code>wsse:UsernameToken</code> with a <strong>PasswordDigest</strong>: Base64(SHA-1(nonce + created + password)), with a fresh nonce and creation time per request.'
+          : 'Send a <code>wsse:UsernameToken</code> with the password as <strong>PasswordText</strong> — only ever over HTTPS.',
+      );
+    } else if (token.type === 'issued' || token.type === 'secure-conversation') {
+      notes.push(`Include a token issued by the security token service${token.issuer ? ` at <code>${esc(token.issuer)}</code>` : ''} (WS-Trust) in <code>wsse:Security</code>.`);
+    } else if (token.type === 'x509') {
+      notes.push('Sign the message with an X.509 certificate (<code>wsse:BinarySecurityToken</code> + <code>ds:Signature</code>). Done by your SOAP toolkit — the try-it console cannot sign.');
+    } else if (token.type === 'saml') {
+      notes.push('Include a SAML assertion from your identity provider.');
+    } else if (token.type === 'kerberos') {
+      notes.push('Authenticate with a Kerberos ticket.');
+    }
+  }
+  if (security.timestamp) notes.push('Add a <code>wsu:Timestamp</code> (Created / Expires).');
+  if (security.https) notes.push(`Use HTTPS${security.clientCertificate ? ' with a client certificate' : ''}.`);
+  if (security.signed && !security.tokens.some((token) => token.type === 'x509')) notes.push('Parts of the message must be signed.');
+  if (security.encrypted) notes.push('Parts of the message must be encrypted.');
+  if (notes.length === 0) return '';
+  return `<div class="wsse-notes">
+    <p class="variants-intro">WS-Security</p>
+    <ul class="md-list">${notes.map((note) => `<li>${note}</li>`).join('')}</ul>
+  </div>`;
+}
+
 /** SOAP operations: protocol, binding style, action and the other ports. */
 function soapMeta(endpoint) {
   const soap = endpoint.soap;
@@ -107,6 +140,9 @@ function soapMeta(endpoint) {
       soap.version === '1.1' ? 'SOAPAction header' : '<code>action</code> in Content-Type',
     ),
   ];
+  if (soap.security) {
+    items.push(metaItem(lockIcon(), esc(wsseSummary(soap.security)), soap.security.declared ? 'WS-Security (configured)' : 'WS-Security policy'));
+  }
   const faults = endpoint.responses.find((response) => response.status === '500');
   const named = faults?.contents?.[0]?.examples?.filter((example) => example.key !== 'Server') ?? [];
   if (named.length) {

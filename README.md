@@ -28,7 +28,9 @@ no runtime OpenAPI parsing, no npm dependencies — Node alone builds it.
 - **SOAP services from WSDL** — next to your REST API or on their own:
   operations with full XML envelopes, SOAP 1.1/1.2, faults, XSD types as
   browsable models (abstract types, `choice`, attributes, imports across
-  dozens of files), PHP `SoapClient` / zeep / cURL samples and try-it.
+  dozens of files), PHP `SoapClient` / zeep / cURL samples and try-it —
+  with **WS-Security** from the WSDL's policy: UsernameToken (digest),
+  Timestamp, and tokens fetched from an STS via WS-Trust.
 - **YAML or JSON, one file or many** — external `$ref`s across files are
   bundled at build time.
 - **Code samples in 12 clients** — cURL, HTTPie, JavaScript, Guzzle, Laravel
@@ -110,6 +112,7 @@ What Scramble's config controls:
 | `api` | `default` | which Scramble API to document (`Scramble::registerApi`) |
 | `route_prefix` | detected | set if Scramble's UI route moved and detection fails |
 | `wsdl` | `[]` | WSDL files/URLs documented as SOAP services next to the REST API |
+| `soap_security`, `soap_sts` | `null` | WS-Security for WSDLs without a policy, e.g. `issued+timestamp`, and the STS address |
 | `allow_spec_html` | `false` | render HTML-authored descriptions verbatim — see [Security](#security) |
 | `node`, `timeout` | `node`, `300` | generator binary and time limit |
 
@@ -146,6 +149,7 @@ npm run preview           # http://localhost:4173, with the MCP endpoint
 | --- | --- | --- |
 | `--spec` | `openapi.json` | source specification (JSON or YAML; may `$ref` other files) |
 | `--wsdl` | — | WSDL 1.1 file or URL to document as SOAP services, repeatable |
+| `--soap-security`, `--soap-sts` | — | WS-Security for WSDLs that declare none, and the STS address |
 | `--out` | `dist` | output directory |
 | `--base` | — | sub-path the site is served from, e.g. `/docs/api` |
 | `--lang` | `en` | page `lang` attribute |
@@ -191,11 +195,39 @@ and pretty-prints the XML that comes back. XSD types are listed under Models.
 | Supported | Not supported |
 | --- | --- |
 | WSDL 1.1 `document/literal` and `rpc/literal`, SOAP 1.1 and 1.2 ports (shown as one operation) | WSDL 2.0, `rpc/encoded` |
-| `wsdl:import`, `xsd:import`/`include` — local files and http(s) | WS-Security / WS-Policy headers |
+| `wsdl:import`, `xsd:import`/`include` — local files and http(s) | Signing / encrypting messages in try-it (documented, done by your toolkit) |
 | `sequence`, `all`, `choice`, groups, element refs, `minOccurs`/`maxOccurs` | `xsd:redefine` semantics (treated as include), substitution groups |
 | attributes and attribute groups, `simpleContent`, `complexContent` extension/restriction | |
 | abstract types (listed with the derived types to send via `xsi:type`) | |
 | simple type facets, enumerations (with docs), lists, unions | |
+
+### WS-Security
+
+Requirements are read from the WSDL's **WS-SecurityPolicy** (WS-Policy 1.2
+and 1.5, SecurityPolicy 1.1–1.3; attached to bindings, operations or
+messages, by reference or inline): UsernameToken (text or digest),
+Timestamp, HTTPS / client certificates, tokens issued by an STS
+(`IssuedToken`, `SecureConversationToken`), X.509 signing and encryption,
+SAML and Kerberos. Each operation page says what a client must send, the
+example envelope carries the matching `wsse:Security` header, and the PHP
+`SoapClient` and zeep samples set it up.
+
+Many services require WS-Security without declaring it (BiPRO, for one).
+Declare it for them — a policy in the WSDL always takes precedence:
+
+```bash
+node build/index.mjs --wsdl transfer.wsdl --soap-security issued+timestamp --soap-sts https://sts.example.com/410
+```
+
+`--soap-security` combines `username`, `username-digest`, `issued`, `x509`
+and `timestamp` with `+`; in Laravel use `soap_security` and `soap_sts`.
+
+In the **try-it console**, the Authorize dialog's WS-Security section builds
+the header for every SOAP request: a UsernameToken with a fresh nonce and
+`PasswordDigest` (computed in the browser), a Timestamp, and an issued token —
+pasted, or requested from the STS right there via **WS-Trust 1.3 or 2005/02**
+(the STS must allow CORS from the docs' origin). Message signatures are not
+computed in the browser.
 
 Tested against public SOAP services (.NET and others) and the BiPRO 2.6 schema set (60+ XSD files).
 

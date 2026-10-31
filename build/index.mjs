@@ -45,6 +45,8 @@ export async function buildDocs({
   favicon = '',
   title = '',
   wsdl = [],
+  soapSecurity = '',
+  soapSts = '',
 } = {}) {
   const started = performance.now();
   const DIST = absolute(out);
@@ -55,7 +57,8 @@ export async function buildDocs({
   const wsdlFiles = [wsdl].flat().filter(Boolean);
   const hasSpec = Boolean(specPath) && (wsdlFiles.length === 0 || (await exists(absolute(specPath))));
   const fragments = [];
-  for (const file of wsdlFiles) fragments.push(await loadWsdl(/^https?:/i.test(file) ? file : absolute(file)));
+  const wsdlOptions = { security: soapSecurity || null, sts: soapSts || null };
+  for (const file of wsdlFiles) fragments.push(await loadWsdl(/^https?:/i.test(file) ? file : absolute(file), wsdlOptions));
   const restSpec = hasSpec ? await loadSpec(absolute(specPath)) : null;
   // The /openapi.json download is the REST document as given — serialized
   // now, before SOAP services are merged into the in-memory copy, and as
@@ -307,6 +310,7 @@ function minifyCss(css) {
 //                           [--css theme.css]... [--js extra.js]...
 //                           [--theme ocean] [--logo logo.svg] [--favicon icon.png]
 //                           [--title "My API"] [--wsdl service.wsdl]...
+//                           [--soap-security username-digest+timestamp] [--soap-sts URL]
 // Skipped when the module is imported programmatically.
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
   const { values } = parseArgs({
@@ -323,9 +327,13 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
       favicon: { type: 'string', default: '' },
       title: { type: 'string', default: '' },
       wsdl: { type: 'string', multiple: true, default: [] },
+      'soap-security': { type: 'string', default: '' },
+      'soap-sts': { type: 'string', default: '' },
     },
   });
   values.allowSpecHtml = values['allow-spec-html'];
+  values.soapSecurity = values['soap-security'];
+  values.soapSts = values['soap-sts'];
 
   buildDocs(values).catch((error) => {
     console.error(error);

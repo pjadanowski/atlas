@@ -195,6 +195,14 @@ class SiteBuilder
             $command[] = $wsdl;
         }
 
+        foreach (['soap_security' => '--soap-security', 'soap_sts' => '--soap-sts'] as $key => $flag) {
+            $value = (string) Config::get("atlas.{$key}", '');
+            if ($value !== '') {
+                $command[] = $flag;
+                $command[] = $value;
+            }
+        }
+
         foreach (['css', 'js'] as $kind) {
             foreach ((array) Config::get("atlas.{$kind}", []) as $file) {
                 $command[] = "--{$kind}";

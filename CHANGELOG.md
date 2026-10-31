@@ -1,5 +1,16 @@
 # Changelog
 
+## Unreleased
+
+### Added
+- WS-Security for SOAP services: requirements read from WS-SecurityPolicy
+  (WS-Policy 1.2/1.5, SecurityPolicy 1.1–1.3, by reference or inline) or
+  declared with `--soap-security` / `atlas.soap_security`; documented on each
+  operation, in the example envelope and in the PHP SoapClient / zeep
+  samples. Try-it builds the `wsse:Security` header per request —
+  UsernameToken with PasswordDigest, Timestamp, issued tokens pasted or
+  requested from an STS via WS-Trust 1.3 / 2005/02.
+
 ## 0.2.0 — 2026-10-31
 
 ### Added

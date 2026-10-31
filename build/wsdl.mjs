@@ -2,7 +2,8 @@ import { readFile } from 'node:fs/promises';
 import { dirname, resolve as resolvePath } from 'node:path';
 
 import { childOf, childrenOf, parseXml, resolveQName } from './xml.mjs';
-import { xmlEnvelope, xmlFaultEnvelope } from './xml-example.mjs';
+import { wsseHeader, xmlEnvelope, xmlFaultEnvelope } from './xml-example.mjs';
+import { collectPolicies, declaredSecurity, operationSecurity } from './wspolicy.mjs';
 
 /**
  * WSDL 1.1 (+ XSD) → OpenAPI fragment. SOAP operations become ordinary
@@ -29,7 +30,12 @@ const NS = {
 
 const CONTENT_TYPES = { '1.1': 'text/xml', '1.2': 'application/soap+xml' };
 
-export async function loadWsdl(location) {
+/**
+ * `security` declares WS-Security for services whose WSDL has no
+ * WS-SecurityPolicy (see declaredSecurity); `sts` is the token service URL
+ * for issued tokens. A policy in the WSDL always wins.
+ */
+export async function loadWsdl(location, { security = null, sts = null } = {}) {
   const loader = createLoader();
   const root = await loader.load(location, null);
   if (root.element.ns === 'http://www.w3.org/ns/wsdl') {
@@ -39,6 +45,7 @@ export async function loadWsdl(location) {
     throw new Error(`${location}: not a WSDL 1.1 document (root is <${root.element.name}>)`);
   }
   const registry = await collect(loader, root);
+  registry.declaredSecurity = declaredSecurity(security, { sts });
   return toOpenApi(registry, location);
 }
 
@@ -87,6 +94,7 @@ async function collect(loader, root) {
     attributeGroups: new Map(),
     attributes: new Map(),
     prefixes: new Map(), // namespace → preferred prefix, from the documents' own declarations
+    policies: new Map(), // wsp:Policy by id, for WS-SecurityPolicy
     documentation: '',
     targetNamespace: root.element.attrs.targetNamespace ?? '',
   };
@@ -97,6 +105,7 @@ async function collect(loader, root) {
     rememberPrefixes(registry, document.element);
     const definitions = document.element;
     const targetNamespace = definitions.attrs.targetNamespace ?? '';
+    collectPolicies(definitions, registry.policies);
     for (const imported of childrenOf(definitions, NS.wsdl, 'import')) {
       if (!imported.attrs.location) continue;
       const next = await loader.load(imported.attrs.location, document.location);
@@ -571,7 +580,8 @@ function toOpenApi(registry, location) {
       const input = bodySchema(registry, converter, operation, 'input', port);
       const output = bodySchema(registry, converter, operation, 'output', port);
       const exampleSpec = { components: { schemas: converter.schemas } };
-      const requestExample = xmlEnvelope(exampleSpec, input, port.version, converter.prefixOf, 'request');
+      const header = operation.security ? wsseHeader(operation.security, port.version) : '';
+      const requestExample = xmlEnvelope(exampleSpec, input, port.version, converter.prefixOf, 'request', header);
       const responseExample = output ? xmlEnvelope(exampleSpec, output, port.version, converter.prefixOf, 'response') : null;
       const faults = operation.faults.map((fault) => ({ name: fault.name, schema: faultSchema(registry, converter, fault) }));
 
@@ -610,6 +620,7 @@ function toOpenApi(registry, location) {
         action: operation.action,
         address: port.address,
         targetNamespace: registry.targetNamespace,
+        security: operation.security,
         alternatives: variants.slice(1).map((variant) => ({
           port: variant.port.name,
           version: variant.port.version,
@@ -691,8 +702,12 @@ function soapPort(registry, port) {
     if (bodyUse?.attrs.use === 'encoded') {
       throw new Error(`Operation ${abstract.attrs.name}: rpc/encoded SOAP is not supported (literal only)`);
     }
+    const security =
+      operationSecurity(registry.policies, binding, bound, bound ? childOf(bound, NS.wsdl, 'input') : null) ??
+      registry.declaredSecurity;
     return {
       name: abstract.attrs.name,
+      security,
       documentation: documentationOf(abstract),
       action: soapOperation?.attrs.soapAction ?? '',
       style: soapOperation?.attrs.style ?? defaultStyle,

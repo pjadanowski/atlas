@@ -369,3 +369,17 @@ h1.is-deprecated {
   font-size: 13px;
   color: var(--text-secondary);
 }
+
+/* SOAP operations: what the WS-Security policy asks of a client */
+.wsse-notes {
+  margin-top: 16px;
+  padding: 12px 16px 4px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-card);
+  font-size: 13.5px;
+  color: var(--text-secondary);
+}
+
+.wsse-notes .md-list {
+  margin: 0 0 8px;
+}

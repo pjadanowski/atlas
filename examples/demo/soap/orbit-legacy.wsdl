@@ -5,8 +5,34 @@
                   xmlns:xsd="http://www.w3.org/2001/XMLSchema"
                   xmlns:ob="urn:orbit:legacy:types"
                   xmlns:tns="urn:orbit:legacy:service"
+                  xmlns:wsp="http://www.w3.org/ns/ws-policy"
+                  xmlns:sp="http://docs.oasis-open.org/ws-sx/ws-securitypolicy/200702"
+                  xmlns:wsu="http://docs.oasis-open.org/wss/2004/01/oasis-200401-wss-wssecurity-utility-1.0.xsd"
+                  xmlns:wsa="http://www.w3.org/2005/08/addressing"
                   targetNamespace="urn:orbit:legacy:service">
   <wsdl:documentation>The Orbit Legacy Booking service — the SOAP interface travel agencies used before the REST API, still supported for existing partners (fictional).</wsdl:documentation>
+
+  <!-- Partners authenticate with a UsernameToken (password digest) over
+       HTTPS, every message carries a Timestamp. -->
+  <wsp:Policy wsu:Id="PartnerUsernamePolicy">
+    <wsp:ExactlyOne>
+      <wsp:All>
+        <sp:TransportBinding>
+          <wsp:Policy>
+            <sp:TransportToken><wsp:Policy><sp:HttpsToken/></wsp:Policy></sp:TransportToken>
+            <sp:IncludeTimestamp/>
+          </wsp:Policy>
+        </sp:TransportBinding>
+        <sp:SupportingTokens>
+          <wsp:Policy>
+            <sp:UsernameToken sp:IncludeToken="http://docs.oasis-open.org/ws-sx/ws-securitypolicy/200702/IncludeToken/AlwaysToRecipient">
+              <wsp:Policy><sp:HashPassword/></wsp:Policy>
+            </sp:UsernameToken>
+          </wsp:Policy>
+        </sp:SupportingTokens>
+      </wsp:All>
+    </wsp:ExactlyOne>
+  </wsp:Policy>
 
   <wsdl:types>
     <xsd:schema targetNamespace="urn:orbit:legacy:service">
@@ -43,6 +69,7 @@
   </wsdl:portType>
 
   <wsdl:binding name="LegacyBookingSoap" type="tns:LegacyBookingPortType">
+    <wsp:PolicyReference URI="#PartnerUsernamePolicy"/>
     <soap:binding style="document" transport="http://schemas.xmlsoap.org/soap/http"/>
     <wsdl:operation name="ReserveSeats">
       <soap:operation soapAction="urn:orbit:legacy:ReserveSeats"/>
@@ -56,6 +83,19 @@
       <wsdl:output><soap:body use="literal"/></wsdl:output>
     </wsdl:operation>
     <wsdl:operation name="CancelReservation">
+      <!-- Refunds additionally need a token from the partner STS. -->
+      <wsp:Policy>
+        <sp:SupportingTokens>
+          <wsp:Policy>
+            <sp:IssuedToken>
+              <sp:Issuer><wsa:Address>https://sts.orbit.example/trust</wsa:Address></sp:Issuer>
+              <sp:RequestSecurityTokenTemplate>
+                <wst:TokenType xmlns:wst="http://docs.oasis-open.org/ws-sx/ws-trust/200512">http://docs.oasis-open.org/wss/oasis-wss-saml-token-profile-1.1#SAMLV2.0</wst:TokenType>
+              </sp:RequestSecurityTokenTemplate>
+            </sp:IssuedToken>
+          </wsp:Policy>
+        </sp:SupportingTokens>
+      </wsp:Policy>
       <soap:operation soapAction="urn:orbit:legacy:CancelReservation"/>
       <wsdl:input><soap:body use="literal"/></wsdl:input>
       <wsdl:output><soap:body use="literal"/></wsdl:output>

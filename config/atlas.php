@@ -92,4 +92,15 @@ return [
      * e.g. [resource_path('soap/booking.wsdl'), 'https://partner.example/service?wsdl']
      */
     'wsdl' => [],
+
+    /*
+     * WS-Security for SOAP services whose WSDL does not declare it in a
+     * WS-SecurityPolicy (a policy in the WSDL always wins): "username",
+     * "username-digest", "issued" (token from a WS-Trust STS) or "x509",
+     * optionally "+timestamp" — e.g. 'issued+timestamp'. `soap_sts` is the
+     * token service address offered in the try-it console.
+     */
+    'soap_security' => null,
+
+    'soap_sts' => null,
 ];

@@ -63,7 +63,7 @@ export function pageShell({ model, assets, title, activeHref, content, codeColum
       <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 22v-5M9 8V2M15 8V2M6 8h12v5a6 6 0 0 1-12 0V8Z"/></svg>
       <span>MCP</span>
     </button>
-${model.auth.length > 0 ? authButton() : ''}    <button type="button" class="theme-toggle js-only" data-theme-toggle aria-label="Toggle color scheme">
+${model.auth.length > 0 || hasSoap(model) ? authButton() : ''}    <button type="button" class="theme-toggle js-only" data-theme-toggle aria-label="Toggle color scheme">
       <svg class="icon-sun" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2v2m0 16v2M4.9 4.9l1.4 1.4m11.4 11.4 1.4 1.4M2 12h2m16 0h2M4.9 19.1l1.4-1.4m11.4-11.4 1.4-1.4"/></svg>
       <svg class="icon-moon" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"/></svg>
     </button>
@@ -79,7 +79,7 @@ ${content}
   </main>
 ${hasCode ? `  <aside class="code-col" aria-label="Code examples">\n${codeColumn}\n  </aside>` : ''}
 </div>
-${drawer ? `${drawer}\n` : ''}${model.auth.length > 0 ? `${authDialog(model)}\n` : ''}${mcpDialog(model)}
+${drawer ? `${drawer}\n` : ''}${model.auth.length > 0 || hasSoap(model) ? `${authDialog(model)}\n` : ''}${mcpDialog(model)}
 ${searchDialog()}
 <script src="${esc(assets.js)}" defer></script>
 ${assets.customJs ? `<script src="${esc(assets.customJs)}" defer></script>\n` : ''}</body>
@@ -199,9 +199,11 @@ function authButton() {
  * be configured before opening any endpoint.
  */
 function authDialog(model) {
-  const sections = model.auth
-    .filter((scheme) => scheme.type !== 'mutualTLS')
-    .map((scheme, index) => authSection(scheme, index === 0))
+  const sections = [
+    ...model.auth.filter((scheme) => scheme.type !== 'mutualTLS').map((scheme, index) => authSection(scheme, index === 0)),
+    hasSoap(model) ? wsseSection(model) : '',
+  ]
+    .filter(Boolean)
     .join('\n');
   return `<dialog class="auth-dialog" data-auth-dialog aria-label="API authorization">
   <form method="dialog" class="auth-box">
@@ -265,6 +267,64 @@ function authSection(scheme, first) {
       <p class="auth-hint auth-hint--scheme">${hint}</p>
       ${scheme.description ? `<p class="auth-hint auth-hint--scheme">${mdInline(scheme.description)}</p>` : ''}
 ${fields}
+      </div>
+    </details>`;
+}
+
+function hasSoap(model) {
+  return model.endpoints.some((endpoint) => endpoint.soap);
+}
+
+/**
+ * WS-Security for SOAP operations. The try-it console builds the
+ * wsse:Security header per request from these values: UsernameToken
+ * (text or digest — per the WSDL's policy unless overridden), Timestamp, and
+ * an issued token pasted here or requested from a WS-Trust STS.
+ */
+function wsseSection(model) {
+  const issued = model.endpoints
+    .flatMap((endpoint) => endpoint.soap?.security?.tokens ?? [])
+    .find((token) => (token.type === 'issued' || token.type === 'secure-conversation') && token.issuer);
+  const tokenType = model.endpoints
+    .flatMap((endpoint) => endpoint.soap?.security?.tokens ?? [])
+    .find((token) => token.tokenType)?.tokenType ?? '';
+  const declared = model.endpoints.some((endpoint) => endpoint.soap?.security);
+  const field = (name, label, input) => `        <label class="tryit-field"><span class="tryit-label">${esc(label)}</span>${input}</label>`;
+  const text = (name, placeholder, value = '') =>
+    `<input class="tryit-input" type="text" data-wsse-field="${name}" placeholder="${esc(placeholder)}" value="${esc(value)}" autocomplete="off" spellcheck="false">`;
+  const secret = (name, placeholder) => `<div class="auth-tokenwrap"><input class="tryit-input" type="password" data-wsse-field="${name}" placeholder="${esc(placeholder)}" autocomplete="off">${eyeButton()}</div>`;
+  const select = (name, options) =>
+    `<select class="tryit-input" data-wsse-field="${name}">${options.map(([value, label]) => `<option value="${esc(value)}">${esc(label)}</option>`).join('')}</select>`;
+  return `    <details class="auth-scheme" data-wsse-section${declared ? '' : ' open'}>
+      <summary class="auth-scheme-head">
+        <span class="auth-scheme-name">WS-Security</span>
+        <code class="auth-scheme-id">SOAP</code>
+        <span class="auth-scheme-state" data-wsse-state></span>
+      </summary>
+      <div class="auth-scheme-body">
+      <p class="auth-hint auth-hint--scheme">Added as a <code>wsse:Security</code> header to SOAP requests — built per request (nonce, digest, timestamps) from what the WSDL's policy asks for.</p>
+${field('user', 'Username', text('user', 'username'))}
+${field('pass', 'Password', secret('pass', 'password'))}
+        <div class="auth-row2">
+${field('password', 'Password type', select('password', [['auto', 'As the WSDL requires'], ['digest', 'PasswordDigest'], ['text', 'PasswordText']]))}
+${field('timestamp', 'Timestamp', select('timestamp', [['auto', 'As the WSDL requires'], ['on', 'Always'], ['off', 'Never']]))}
+        </div>
+${field('token', 'Issued token (XML)', '<textarea class="tryit-input tryit-textbody auth-token-xml" data-wsse-field="token" rows="3" placeholder="&lt;saml2:Assertion …&gt; or &lt;wsc:SecurityContextToken …&gt;" spellcheck="false"></textarea>')}
+        <details class="auth-flow" data-sts>
+          <summary>Request a token from a security token service (WS-Trust)</summary>
+          <div class="auth-flow-body">
+            ${text('stsUrl', 'https://sts.example.com/trust', issued?.issuer ?? '')}
+            <div class="auth-row2">
+              ${select('stsVersion', [['1.3', 'WS-Trust 1.3'], ['2005', 'WS-Trust 2005/02']])}
+              ${select('stsSoap', [['1.1', 'SOAP 1.1'], ['1.2', 'SOAP 1.2']])}
+            </div>
+            ${text('stsTokenType', 'Token type URI (optional)', tokenType)}
+            ${text('stsAppliesTo', 'AppliesTo (optional, service address)')}
+            <p class="auth-hint auth-hint--scheme">Authenticates to the STS with the username and password above (UsernameToken, PasswordText).</p>
+            <div class="auth-flow-actions"><button type="button" class="tryit-tool" data-sts-request>Get token</button><span class="auth-flow-status" data-sts-status role="status"></span></div>
+          </div>
+        </details>
+        <label class="auth-check"><input type="checkbox" data-wsse-field="always"> Also send with SOAP operations whose WSDL declares no WS-Security</label>
       </div>
     </details>`;
 }

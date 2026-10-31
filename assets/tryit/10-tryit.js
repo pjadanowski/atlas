@@ -553,12 +553,113 @@
 
   // ---- Send + response rendering ----
 
-  function send(panel) {
+  // ---- WS-Security header for SOAP requests ----
+
+  const WSSE = 'http://docs.oasis-open.org/wss/2004/01/oasis-200401-wss-wssecurity-secext-1.0.xsd';
+  const WSU = 'http://docs.oasis-open.org/wss/2004/01/oasis-200401-wss-wssecurity-utility-1.0.xsd';
+  const TOKEN_PROFILE = 'http://docs.oasis-open.org/wss/2004/01/oasis-200401-wss-username-token-profile-1.0';
+  const BASE64_BINARY = 'http://docs.oasis-open.org/wss/2004/01/oasis-200401-wss-soap-message-security-1.0#Base64Binary';
+  const ISSUED_TYPES = ['issued', 'secure-conversation', 'saml'];
+
+  const base64 = (bytes) => btoa(String.fromCharCode(...new Uint8Array(bytes)));
+
+  /**
+   * Replaces the documentation's example wsse:Security header with a real
+   * one: UsernameToken (PasswordDigest = Base64(SHA-1(nonce + created +
+   * password)), fresh nonce and timestamps per request), Timestamp, and the
+   * issued token from the Authorize dialog — as the operation's policy asks,
+   * unless the dialog overrides it. Without credentials the example header
+   * is just removed. Message signing (X.509) is not done in the browser.
+   */
+  async function secureEnvelope(panel, body) {
+    if (panel.dataset.wsse === undefined || typeof body !== 'string') return body;
+    const doc = new DOMParser().parseFromString(body, 'application/xml');
+    if (doc.querySelector('parsererror')) return body;
+    let required = null;
+    try {
+      required = JSON.parse(panel.dataset.wsse);
+    } catch {
+      required = null;
+    }
+    const config = window.atlasAuth?.wsse?.() ?? {};
+    const envelope = doc.documentElement;
+    const envNs = envelope.namespaceURI;
+    const envPrefix = envelope.prefix || 'soap';
+    let header = [...envelope.children].find((child) => child.localName === 'Header' && child.namespaceURI === envNs);
+    for (const existing of header ? [...header.children] : []) {
+      if (existing.localName === 'Security' && existing.namespaceURI === WSSE) existing.remove();
+    }
+
+    const tokens = required?.tokens ?? [];
+    const declared = Boolean(required);
+    const wantsUsername = declared ? tokens.some((token) => token.type === 'username') : Boolean(config.always && config.user && !config.token);
+    const wantsIssued = declared ? tokens.some((token) => ISSUED_TYPES.includes(token.type)) : Boolean(config.always && config.token);
+    const wantsTimestamp = config.timestamp === 'on' || (config.timestamp !== 'off' && Boolean(required?.timestamp));
+    const haveUsername = wantsUsername && config.user;
+    const haveIssued = wantsIssued && config.token;
+    // Nothing configured → no header: a lone Timestamp authenticates no one.
+    if (!haveUsername && !haveIssued && config.timestamp !== 'on') {
+      return new XMLSerializer().serializeToString(doc);
+    }
+
+    const make = (ns, name, text) => {
+      const node = doc.createElementNS(ns, name);
+      if (text !== undefined) node.textContent = text;
+      return node;
+    };
+    if (!header) {
+      header = doc.createElementNS(envNs, `${envPrefix}:Header`);
+      envelope.insertBefore(header, envelope.firstElementChild);
+    }
+    const security = make(WSSE, 'wsse:Security');
+    security.setAttributeNS(envNs, `${envPrefix}:mustUnderstand`, envNs.includes('2003/05') ? 'true' : '1');
+    const now = new Date();
+    const created = now.toISOString();
+
+    if (wantsTimestamp) {
+      const timestamp = make(WSU, 'wsu:Timestamp');
+      timestamp.setAttributeNS(WSU, 'wsu:Id', `TS-${crypto.randomUUID()}`);
+      timestamp.append(make(WSU, 'wsu:Created', created), make(WSU, 'wsu:Expires', new Date(now.getTime() + 5 * 60 * 1000).toISOString()));
+      security.append(timestamp);
+    }
+    if (haveUsername) {
+      const policyDigest = tokens.find((token) => token.type === 'username')?.digest ?? false;
+      const digest = config.password === 'digest' || (config.password !== 'text' && policyDigest);
+      const usernameToken = make(WSSE, 'wsse:UsernameToken');
+      usernameToken.setAttributeNS(WSU, 'wsu:Id', `UT-${crypto.randomUUID()}`);
+      usernameToken.append(make(WSSE, 'wsse:Username', config.user));
+      const password = make(WSSE, 'wsse:Password');
+      if (digest) {
+        const nonce = crypto.getRandomValues(new Uint8Array(16));
+        const encoder = new TextEncoder();
+        const material = new Uint8Array([...nonce, ...encoder.encode(created), ...encoder.encode(config.pass ?? '')]);
+        password.setAttribute('Type', `${TOKEN_PROFILE}#PasswordDigest`);
+        password.textContent = base64(await crypto.subtle.digest('SHA-1', material));
+        const nonceElement = make(WSSE, 'wsse:Nonce', base64(nonce));
+        nonceElement.setAttribute('EncodingType', BASE64_BINARY);
+        usernameToken.append(password, nonceElement, make(WSU, 'wsu:Created', created));
+      } else {
+        password.setAttribute('Type', `${TOKEN_PROFILE}#PasswordText`);
+        password.textContent = config.pass ?? '';
+        usernameToken.append(password);
+      }
+      security.append(usernameToken);
+    }
+    if (haveIssued) {
+      const fragment = new DOMParser().parseFromString(config.token, 'application/xml');
+      if (!fragment.querySelector('parsererror')) security.append(doc.importNode(fragment.documentElement, true));
+    }
+    header.append(security);
+    return new XMLSerializer().serializeToString(doc);
+  }
+
+  async function send(panel) {
     // Required fields the user left empty get their schema example — the
     // request would otherwise fail on trivially missing values.
     fillSamples(panel, true);
     rememberServer(panel, panel.querySelector('[data-t="server"]').value.replace(/\/$/, ''));
     const request = collectRequest(panel);
+    request.body = await secureEnvelope(panel, request.body);
     const mount = panel.querySelector('[data-tryit-response]');
     const button = panel.querySelector('.tryit-send');
     button.disabled = true;

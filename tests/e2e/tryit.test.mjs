@@ -9,6 +9,7 @@ import { test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawn, execFileSync } from 'node:child_process';
 import { createServer } from 'node:http';
+import { createHash } from 'node:crypto';
 import { mkdtempSync, rmSync, existsSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -53,8 +54,16 @@ before(async () => {
     let body = '';
     request.on('data', (chunk) => (body += chunk));
     request.on('end', () => {
+      if (request.url === '/sts') {
+        // A WS-Trust STS: issues a security context token to a valid user.
+        const ok = /<wsse:Username>ada<\/wsse:Username>/.test(body) && /PasswordText">secret</.test(body) && /RequestSecurityToken/.test(body);
+        response.setHeader('Content-Type', 'text/xml');
+        return response.end(ok
+          ? '<s:Envelope xmlns:s="http://schemas.xmlsoap.org/soap/envelope/"><s:Body><wst:RequestSecurityTokenResponse xmlns:wst="http://docs.oasis-open.org/ws-sx/ws-trust/200512"><wst:RequestedSecurityToken><wsc:SecurityContextToken xmlns:wsc="http://docs.oasis-open.org/ws-sx/ws-secureconversation/200512"><wsc:Identifier>urn:uuid:sct-42</wsc:Identifier></wsc:SecurityContextToken></wst:RequestedSecurityToken></wst:RequestSecurityTokenResponse></s:Body></s:Envelope>'
+          : '<s:Envelope xmlns:s="http://schemas.xmlsoap.org/soap/envelope/"><s:Body><s:Fault><faultcode>s:Client</faultcode><faultstring>bad credentials</faultstring></s:Fault></s:Body></s:Envelope>');
+      }
       response.setHeader('Content-Type', 'application/json');
-      response.end(JSON.stringify({ method: request.method, url: request.url, headers: request.headers, body }));
+      response.end(JSON.stringify({ method: request.method, url: request.url, headers: request.headers, body, wsse: verifyWsse(body) }));
     });
   });
   await new Promise((resolve) => api.listen(0, resolve));
@@ -92,6 +101,19 @@ after(async () => {
     /* ignore */
   }
 });
+
+/**
+ * Server-side check of a UsernameToken PasswordDigest, as a WS-Security
+ * service would do it: Base64(SHA-1(nonce + created + password)).
+ */
+function verifyWsse(body) {
+  const digest = /PasswordDigest">([^<]+)</.exec(body)?.[1];
+  const nonce = /<wsse:Nonce[^>]*>([^<]+)</.exec(body)?.[1];
+  const created = /<wsse:UsernameToken[\s\S]*?<wsu:Created>([^<]+)</.exec(body)?.[1];
+  if (!digest || !nonce || !created) return 'no-digest';
+  const expected = createHash('sha1').update(Buffer.concat([Buffer.from(nonce, 'base64'), Buffer.from(created), Buffer.from('secret')])).digest('base64');
+  return expected === digest ? 'digest-valid' : 'digest-INVALID';
+}
 
 function connect(url) {
   const socket = new WebSocket(url);
@@ -143,9 +165,10 @@ async function open(path) {
 }
 
 /** Opens the page's try-it drawer, sends it, returns the echoed request. */
-async function sendTryIt(path, { auth, server }) {
+async function sendTryIt(path, { auth, server, wsse = {} }) {
   await open(path);
   await evaluate(`localStorage.clear();
+    localStorage.setItem('atlas:wsse', ${JSON.stringify(JSON.stringify(wsse))});
     localStorage.setItem('atlas:auth', ${JSON.stringify(JSON.stringify(auth))});
     localStorage.setItem('tryit:server', ${JSON.stringify(server ?? `http://localhost:${ports.api}`)});`);
   await open(path);
@@ -236,4 +259,34 @@ test('SOAP operations send the envelope with SOAPAction and an XML content type'
   assert.match(text, /accept: "text\/xml/, 'asks for XML back');
   assert.ok(response.has('<ob:ReserveSeats>'), 'envelope body');
   assert.match(text, /method: "POST"/);
+});
+
+test('WS-Security UsernameToken: the server can verify the password digest', { skip }, async () => {
+  const text = await sendTryIt('/soap-legacybooking/legacybooking-reserveseats/', { auth: {}, wsse: { user: 'ada', pass: 'secret' } });
+  assert.match(text, /wsse: "digest-valid"/, 'digest recomputed by the server matches');
+  assert.match(text, /wsu:Timestamp/, 'policy asks for a Timestamp');
+  assert.doesNotMatch(text, /Base64\(SHA-1/, 'the documentation placeholder header is replaced');
+});
+
+test('WS-Security without credentials sends no example header', { skip }, async () => {
+  const text = await sendTryIt('/soap-legacybooking/legacybooking-getreservation/', { auth: {} });
+  assert.doesNotMatch(text, /wsse:Security/);
+});
+
+test('WS-Trust: a token from the STS is placed into the next request', { skip }, async () => {
+  const stsUrl = `http://localhost:${ports.api}/sts`;
+  await open('/soap-legacybooking/legacybooking-cancelreservation/');
+  await evaluate(`localStorage.clear(); localStorage.setItem('atlas:wsse', ${JSON.stringify(JSON.stringify({ user: 'ada', pass: 'secret', stsUrl }))});`);
+  await open('/soap-legacybooking/legacybooking-cancelreservation/');
+  const status = await evaluate(`(async () => {
+    document.querySelector('[data-auth-open]').click();
+    document.querySelector('[data-sts-request]').click();
+    for (let i = 0; i < 100 && !/received|Failed|error/.test(document.querySelector('[data-sts-status]').textContent); i++) await new Promise((r) => setTimeout(r, 50));
+    return document.querySelector('[data-sts-status]').textContent;
+  })()`);
+  assert.match(status, /Token received \(SecurityContextToken\)/);
+  const stored = JSON.parse(await evaluate(`localStorage.getItem('atlas:wsse')`));
+  const text = await sendTryIt('/soap-legacybooking/legacybooking-cancelreservation/', { auth: {}, wsse: stored });
+  assert.match(text, /urn:uuid:sct-42/, 'issued token in wsse:Security');
+  assert.match(text, /wsse: "digest-valid"/, 'plus the UsernameToken the policy also requires');
 });

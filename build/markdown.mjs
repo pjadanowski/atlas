@@ -5,6 +5,7 @@
  */
 
 import { url } from './url.mjs';
+import { wsseSummary } from './render/tryit.mjs';
 
 export function llmsIndex(model) {
   const lines = [
@@ -37,6 +38,7 @@ export function endpointMarkdown(model, endpoint) {
         ? `- Headers: \`Content-Type: text/xml; charset=utf-8\`, \`SOAPAction: "${soap.action}"\``
         : `- Header: \`Content-Type: application/soap+xml; charset=utf-8; action="${soap.action}"\``,
       ...soap.alternatives.map((alternative) => `- Also on SOAP ${alternative.version}: \`${alternative.address}\``),
+      ...(soap.security ? [`- WS-Security: ${wsseSummary(soap.security)}${soap.security.https ? ' (HTTPS)' : ''}`] : []),
     );
   } else {
     lines.push(`\`${endpoint.method} ${endpoint.path}\``, '', authenticationLine(endpoint));

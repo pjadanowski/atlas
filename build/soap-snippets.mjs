@@ -47,6 +47,10 @@ function curl(url, headers, envelope) {
 }
 
 function soapClient(wsdl, soap, args) {
+  const security = soap.security;
+  const username = security?.tokens.find((token) => token.type === 'username');
+  const issued = security?.tokens.some((token) => ['issued', 'secure-conversation', 'saml'].includes(token.type));
+  const header = security && (username || issued || security.timestamp) ? phpWsseHeader(username, issued, security.timestamp) : [];
   return [
     '<?php',
     '',
@@ -55,9 +59,49 @@ function soapClient(wsdl, soap, args) {
     "    'exceptions' => true,",
     "    'trace' => true,",
     ']);',
+    ...header,
     '',
     `$response = $client->__soapCall('${phpEscape(soap.operation)}', [${phpValue(args, 0)}]);`,
   ].join('\n');
+}
+
+/** WS-Security header for SoapClient, which has no built-in WSS support. */
+function phpWsseHeader(username, issued, timestamp) {
+  const lines = ['', '// WS-Security header, built per request'];
+  if (username || timestamp) {
+    lines.push('$created = gmdate(\'Y-m-d\\TH:i:s\\Z\');');
+  }
+  if (username?.digest) {
+    lines.push(
+      '$nonce = random_bytes(16);',
+      "$digest = base64_encode(sha1($nonce . $created . getenv('SOAP_PASSWORD'), true));",
+    );
+  }
+  lines.push("$security = '<wsse:Security xmlns:wsse=\"http://docs.oasis-open.org/wss/2004/01/oasis-200401-wss-wssecurity-secext-1.0.xsd\"'");
+  lines.push("    . ' xmlns:wsu=\"http://docs.oasis-open.org/wss/2004/01/oasis-200401-wss-wssecurity-utility-1.0.xsd\">'");
+  if (timestamp) {
+    lines.push("    . '<wsu:Timestamp><wsu:Created>' . $created . '</wsu:Created>'", "    . '<wsu:Expires>' . gmdate('Y-m-d\\TH:i:s\\Z', time() + 300) . '</wsu:Expires></wsu:Timestamp>'");
+  }
+  if (username) {
+    const profile = 'http://docs.oasis-open.org/wss/2004/01/oasis-200401-wss-username-token-profile-1.0';
+    lines.push("    . '<wsse:UsernameToken><wsse:Username>' . htmlspecialchars(getenv('SOAP_USERNAME')) . '</wsse:Username>'");
+    lines.push(
+      username.digest
+        ? `    . '<wsse:Password Type="${profile}#PasswordDigest">' . $digest . '</wsse:Password>'\n    . '<wsse:Nonce EncodingType="http://docs.oasis-open.org/wss/2004/01/oasis-200401-wss-soap-message-security-1.0#Base64Binary">' . base64_encode($nonce) . '</wsse:Nonce>'\n    . '<wsu:Created>' . $created . '</wsu:Created></wsse:UsernameToken>'`
+        : `    . '<wsse:Password Type="${profile}#PasswordText">' . htmlspecialchars(getenv('SOAP_PASSWORD')) . '</wsse:Password></wsse:UsernameToken>'`,
+    );
+  }
+  if (issued) lines.push("    . $issuedTokenXml // token from your security token service (WS-Trust)");
+  lines.push("    . '</wsse:Security>';");
+  lines.push(
+    '$client->__setSoapHeaders(new SoapHeader(',
+    "    'http://docs.oasis-open.org/wss/2004/01/oasis-200401-wss-wssecurity-secext-1.0.xsd',",
+    "    'Security',",
+    '    new SoapVar($security, XSD_ANYXML),',
+    '    true,',
+    '));',
+  );
+  return lines;
 }
 
 function laravel(url, headers, envelope) {
@@ -94,7 +138,37 @@ function zeep(wsdl, soap, args) {
     : identifiers
       ? `client.service.${soap.operation}(\n${entries.map(([name, value]) => `    ${name}=${pyValue(value, 1)},`).join('\n')}\n)`
       : `client.service.${soap.operation}(**${pyValue(args, 0)})`;
-  return ['from zeep import Client', '', `client = Client(${JSON.stringify(wsdl)})`, `result = ${call}`].join('\n');
+  const { imports, setup, argument } = zeepWsse(soap.security);
+  return [
+    ...imports,
+    'from zeep import Client',
+    '',
+    ...setup,
+    `client = Client(${JSON.stringify(wsdl)}${argument})`,
+    `result = ${call}`,
+  ].join('\n');
+}
+
+/** zeep's own WS-Security plugins: UsernameToken (digest/timestamp) and X.509 Signature. */
+function zeepWsse(security) {
+  if (!security) return { imports: [], setup: [], argument: '' };
+  const username = security.tokens.find((token) => token.type === 'username');
+  const x509 = security.tokens.some((token) => token.type === 'x509') || security.signed;
+  const issued = security.tokens.some((token) => ['issued', 'secure-conversation', 'saml'].includes(token.type));
+  const imports = ['import os'];
+  const plugins = [];
+  const setup = [];
+  if (username) {
+    imports.push('from zeep.wsse.username import UsernameToken');
+    plugins.push(`UsernameToken(os.environ["SOAP_USERNAME"], os.environ["SOAP_PASSWORD"]${username.digest ? ', use_digest=True' : ''})`);
+  }
+  if (x509) {
+    imports.push('from zeep.wsse.signature import Signature');
+    plugins.push('Signature("client-key.pem", "client-cert.pem")');
+  }
+  if (issued) setup.push('# Issued token: request it from the STS (WS-Trust) and add it to the wsse:Security header.', '');
+  if (plugins.length === 0) return { imports: imports.length > 1 ? imports : [], setup, argument: '' };
+  return { imports, setup, argument: `, wsse=${plugins.length === 1 ? plugins[0] : `[${plugins.join(', ')}]`}` };
 }
 
 function javascript(url, headers, envelope) {

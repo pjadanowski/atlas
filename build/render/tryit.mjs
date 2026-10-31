@@ -28,7 +28,7 @@ export function tryItDrawer(model, endpoint) {
   const isMultipart = endpoint.requestBody?.contentType.includes('multipart') ?? false;
   const sections = [
     serverField(model, endpoint),
-    endpoint.security.some((alternative) => alternative.length > 0) ? authRow(endpoint) : '',
+    endpoint.soap ? wsseRow(endpoint) : endpoint.security.some((alternative) => alternative.length > 0) ? authRow(endpoint) : '',
     paramSection('Path', endpoint.params.path.map((param) => paramField(param, 'path'))),
     paramSection('Query', endpoint.params.query.map((param) => paramField(param, 'query'))),
     paramSection('Headers', endpoint.params.header.map((param) => paramField(param, 'header'))),
@@ -39,7 +39,7 @@ export function tryItDrawer(model, endpoint) {
   // Alternatives (OR) of scheme ids (AND) — the runtime picks the first one
   // whose credentials are all configured.
   const security = JSON.stringify(endpoint.security.map((alternative) => alternative.map((entry) => entry.id)));
-  return `<dialog class="tryit-drawer" data-tryit data-method="${esc(endpoint.method)}" data-path="${esc(endpoint.soap ? '' : endpoint.path)}" data-accept="${endpoint.soap ? 'text/xml, application/soap+xml' : 'application/json'}" data-security="${esc(security)}" aria-label="Try it – ${esc(endpoint.method)} ${esc(endpoint.path)}">
+  return `<dialog class="tryit-drawer" data-tryit data-method="${esc(endpoint.method)}" data-path="${esc(endpoint.soap ? '' : endpoint.path)}" data-accept="${endpoint.soap ? 'text/xml, application/soap+xml' : 'application/json'}"${endpoint.soap ? ` data-soap-version="${esc(endpoint.soap.version)}" data-wsse="${esc(JSON.stringify(endpoint.soap.security ?? null))}"` : ''} data-security="${esc(security)}" aria-label="Try it – ${esc(endpoint.method)} ${esc(endpoint.path)}">
   <form class="tryit-form">
     <header class="tryit-head">
       <div class="tryit-head-title">${methodBadge(endpoint.badge ?? endpoint.method)}<code class="tryit-head-path">${esc(endpoint.soap ? endpoint.soap.operation : endpoint.path)}</code></div>
@@ -123,6 +123,25 @@ function authRow(endpoint) {
         <span class="tryit-authstate" data-auth-state>Not set</span>
         <button type="button" class="tryit-authedit" data-auth-open>Change</button>
       </div>`;
+}
+
+/** SOAP: which WS-Security the operation's policy asks for, and whether it is configured. */
+function wsseRow(endpoint) {
+  const security = endpoint.soap.security;
+  const parts = security ? wsseSummary(security) : 'not declared in the WSDL';
+  return `      <div class="tryit-authrow">
+        <span class="tryit-label">WS-Security${security?.tokens?.length ? '<em class="tryit-req">required</em>' : ''}</span>
+        <span class="tryit-authstate" data-wsse-row title="${esc(parts)}">${esc(parts)}</span>
+        <button type="button" class="tryit-authedit" data-auth-open>Change</button>
+      </div>`;
+}
+
+export function wsseSummary(security) {
+  const names = { username: 'UsernameToken', issued: 'Issued token', 'secure-conversation': 'Security context token', x509: 'X.509', saml: 'SAML', kerberos: 'Kerberos' };
+  const parts = security.tokens.map((token) => (token.type === 'username' ? `UsernameToken (${token.digest ? 'digest' : 'text'})` : names[token.type] ?? token.type));
+  if (security.timestamp) parts.push('Timestamp');
+  if (security.signed) parts.push('signed');
+  return parts.join(' + ') || 'none';
 }
 
 /** Copies the request — with the currently filled values — as code. */
