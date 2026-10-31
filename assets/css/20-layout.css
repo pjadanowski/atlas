@@ -317,3 +317,12 @@ html.js .sidebar-resizer {
     display: none;
   }
 }
+
+/* Operator logo (--logo) in place of the accent square */
+.topbar-logo-img {
+  display: block;
+  height: 24px;
+  width: auto;
+  max-width: 140px;
+  object-fit: contain;
+}

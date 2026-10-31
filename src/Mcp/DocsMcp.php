@@ -12,6 +12,9 @@ use Pjadanowski\Atlas\Support\DocsLocation;
  */
 class DocsMcp
 {
+    /** Index entries that are pages but not operations (see build/search.mjs). */
+    private const NON_OPERATIONS = ['SCHEMA', 'TAG'];
+
     public const PROTOCOL_VERSIONS = ['2025-06-18', '2025-03-26', '2024-11-05'];
 
     private const SERVER_NAME = 'atlas-docs';
@@ -157,7 +160,7 @@ class DocsMcp
                 $tag = isset($arguments['tag']) ? (string) $arguments['tag'] : null;
                 $groups = [];
                 foreach ($index as $entry) {
-                    if ($entry['m'] === 'SCHEMA' || ($tag !== null && $entry['g'] !== $tag)) {
+                    if (in_array($entry['m'], self::NON_OPERATIONS, true) || ($tag !== null && $entry['g'] !== $tag)) {
                         continue;
                     }
                     $groups[$entry['g']][] = "{$entry['m']} {$entry['p']} — {$entry['t']} ({$entry['o']})";
@@ -182,7 +185,7 @@ class DocsMcp
                     throw new RpcException(-32602, 'Pass operationId, or method and path');
                 }
                 foreach ($index as $entry) {
-                    if ($entry['m'] === 'SCHEMA') {
+                    if (in_array($entry['m'], self::NON_OPERATIONS, true)) {
                         continue;
                     }
                     $matches = $id !== null

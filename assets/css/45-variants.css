@@ -310,3 +310,55 @@ h1.is-deprecated {
   border: 0;
   border-top: 1px solid var(--border);
 }
+
+/* ---- Home page: one card per security scheme ---- */
+
+.auth-cards {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin: 14px 0;
+}
+
+.auth-card {
+  padding: 14px 16px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-card);
+  scroll-margin-top: calc(var(--header-height) + 16px);
+}
+
+.auth-card p {
+  margin: 0 0 6px;
+}
+
+.auth-card-head .auth-scheme-id {
+  font-size: 11.5px;
+  color: var(--text-muted);
+  background: none;
+}
+
+.auth-card-desc {
+  color: var(--text-secondary);
+  font-size: 13.5px;
+}
+
+.auth-card .auth-header-example {
+  margin: 8px 0 0;
+}
+
+.auth-card-flow {
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px dashed var(--border);
+  font-size: 13.5px;
+}
+
+.auth-card-flow code {
+  font-size: 12px;
+}
+
+.auth-card-scopes {
+  margin: 4px 0 0;
+  padding-left: 18px;
+  color: var(--text-secondary);
+}

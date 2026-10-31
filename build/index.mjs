@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto';
 import { copyFile, mkdir, readdir, readFile, rm, writeFile } from 'node:fs/promises';
-import { isAbsolute, join, resolve } from 'node:path';
+import { extname, isAbsolute, join, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { parseArgs } from 'node:util';
 
@@ -17,6 +17,7 @@ import { homeContent, tagContent } from './render/home.mjs';
 import { modelContent, modelCodeColumn, modelsIndexContent } from './render/models.mjs';
 import { endpointMarkdown, llmsIndex, modelMarkdown } from './markdown.mjs';
 import { mcpManifest } from './mcp.mjs';
+import { themeCss } from './themes.mjs';
 
 const ROOT = fileURLToPath(new URL('..', import.meta.url));
 
@@ -38,6 +39,10 @@ export async function buildDocs({
   allowSpecHtml = false,
   css = [],
   js = [],
+  theme = 'default',
+  logo = '',
+  favicon = '',
+  title = '',
 } = {}) {
   const started = performance.now();
   const DIST = absolute(out);
@@ -46,6 +51,7 @@ export async function buildDocs({
   const spec = await loadSpec(absolute(specPath));
   const model = buildModel(spec);
   model.lang = lang;
+  if (title) model.title = title;
   configureText({ baseUrl: model.baseUrl, allowHtml: allowSpecHtml });
   const mountedAt = configureBase(base);
 
@@ -55,7 +61,7 @@ export async function buildDocs({
   // Bundles first: their content hashes become the filenames referenced by
   // every page, so returning visitors never see stale assets after a deploy.
   const bundles = {
-    css: minifyCss(await bundle(join(ASSETS, 'css'), '.css')),
+    css: minifyCss(`${await bundle(join(ASSETS, 'css'), '.css')}\n${themeCss(theme)}`),
     js: await bundle(join(ASSETS, 'js'), '.js'),
     searchJs: await bundle(join(ASSETS, 'search'), '.js'),
     tryitJs: await bundle(join(ASSETS, 'tryit'), '.js'),
@@ -77,6 +83,21 @@ export async function buildDocs({
     Object.entries(files).map(([name, file]) => [name, url(file)]),
   );
   assets.searchIndex = url('/assets/search-index.json');
+
+  // Branding: a logo replaces the accent square in the top bar, a favicon
+  // the generated one. Local files are copied and content-hashed; URLs are
+  // used as given.
+  for (const [key, source] of [['logo', logo], ['favicon', favicon]]) {
+    if (!source) continue;
+    if (/^(https?:)?\/\//.test(source) || source.startsWith('data:')) {
+      assets[key] = source;
+      continue;
+    }
+    const content = await readFile(absolute(source));
+    const file = `/assets/${key}.${hash(content)}${extname(source)}`;
+    await writeFile(join(DIST, file.slice(1)), content);
+    assets[key] = url(file);
+  }
 
   // Operator-supplied overrides, kept out of the main bundles so their hashes
   // stay stable and a broken custom file is obvious in the network panel.
@@ -260,6 +281,8 @@ function minifyCss(css) {
 // CLI: node build/index.mjs [--spec openapi.json] [--out dist] [--lang en]
 //                           [--base /docs/api] [--allow-spec-html]
 //                           [--css theme.css]... [--js extra.js]...
+//                           [--theme ocean] [--logo logo.svg] [--favicon icon.png]
+//                           [--title "My API"]
 // Skipped when the module is imported programmatically.
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
   const { values } = parseArgs({
@@ -271,6 +294,10 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
       'allow-spec-html': { type: 'boolean', default: false },
       css: { type: 'string', multiple: true, default: [] },
       js: { type: 'string', multiple: true, default: [] },
+      theme: { type: 'string', default: 'default' },
+      logo: { type: 'string', default: '' },
+      favicon: { type: 'string', default: '' },
+      title: { type: 'string', default: '' },
     },
   });
   values.allowSpecHtml = values['allow-spec-html'];

@@ -4,7 +4,11 @@
      * multi-page static site: the pages were rendered ahead of time by
      * `php artisan atlas:build`, and this view only serves the entry page.
      * Everything below the prefix is served by the package's asset route.
+     *
+     * In development (atlas.auto_build) the site follows the code instead:
+     * rebuilt here whenever the specification changed since the last build.
      */
+    app(\Pjadanowski\Atlas\Support\SiteBuilder::class)->ensureFresh();
     $location = app(\Pjadanowski\Atlas\Support\DocsLocation::class);
     $index = $location->outputPath().DIRECTORY_SEPARATOR.'index.html';
 @endphp

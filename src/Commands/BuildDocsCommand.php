@@ -2,12 +2,10 @@
 
 namespace Pjadanowski\Atlas\Commands;
 
-use Dedoc\Scramble\CacheableGenerator;
-use Dedoc\Scramble\Scramble;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\Config;
-use Illuminate\Support\Facades\Process;
 use Pjadanowski\Atlas\Support\DocsLocation;
+use Pjadanowski\Atlas\Support\SiteBuilder;
 
 class BuildDocsCommand extends Command
 {
@@ -20,28 +18,29 @@ class BuildDocsCommand extends Command
 
     protected $description = 'Generate the Atlas documentation site from the Scramble specification';
 
-    public function handle(DocsLocation $location, CacheableGenerator $generator): int
+    public function handle(DocsLocation $location, SiteBuilder $builder): int
     {
         $this->warnAboutConfiguration($location);
 
         $specPath = $this->option('spec');
+        $specification = null;
         $temporarySpec = null;
 
         if ($specPath === null) {
-            $this->components->task('Generating OpenAPI specification', function () use ($generator, $location, &$temporarySpec) {
-                $document = $generator(Scramble::getGeneratorConfig($location->api()));
+            $this->components->task('Generating OpenAPI specification', function () use ($builder, &$specification, &$temporarySpec) {
+                $specification = $builder->specification();
                 $temporarySpec = tempnam(sys_get_temp_dir(), 'atlas-');
-                file_put_contents($temporarySpec, json_encode(
-                    $document,
-                    JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE,
-                ));
+                file_put_contents($temporarySpec, $specification);
             });
             $specPath = $temporarySpec;
         }
 
-        $result = Process::path($location->generatorPath())
-            ->timeout((int) Config::get('atlas.timeout', 300))
-            ->run($this->generatorCommand($location, $specPath));
+        $result = $builder->build($specPath, [
+            'out' => $this->option('out'),
+            'base' => $this->option('base'),
+            'lang' => $this->option('lang'),
+            'allow_spec_html' => (bool) $this->option('allow-spec-html'),
+        ]);
 
         if ($temporarySpec !== null) {
             @unlink($temporarySpec);
@@ -56,47 +55,19 @@ class BuildDocsCommand extends Command
             return self::FAILURE;
         }
 
+        // A default build is exactly what auto-build would produce: record it,
+        // so the first docs request after a deploy-time build does not redo it.
+        $isDefaultBuild = $specification !== null && ! $this->option('out') && ! $this->option('base')
+            && ! $this->option('lang') && ! $this->option('allow-spec-html');
+        if ($isDefaultBuild) {
+            $builder->writeStamp($builder->fingerprint($specification));
+        }
+
         $this->line(trim($result->output()));
 
         return self::SUCCESS;
     }
 
-    /** @return array<int, string> */
-    private function generatorCommand(DocsLocation $location, string $specPath): array
-    {
-        $base = $this->option('base') ?? $location->base();
-
-        $command = [
-            (string) Config::get('atlas.node', 'node'),
-            'build/index.mjs',
-            '--spec', $specPath,
-            '--out', $this->option('out') ?: $location->outputPath(),
-            '--lang', $this->option('lang') ?: (string) Config::get('atlas.lang', 'en'),
-        ];
-
-        if ($base !== '') {
-            $command[] = '--base';
-            $command[] = $base;
-        }
-
-        if ($this->option('allow-spec-html') || Config::get('atlas.allow_spec_html', false)) {
-            $command[] = '--allow-spec-html';
-        }
-
-        foreach (['css', 'js'] as $kind) {
-            foreach ((array) Config::get("atlas.{$kind}", []) as $file) {
-                $command[] = "--{$kind}";
-                $command[] = $file;
-            }
-        }
-
-        return $command;
-    }
-
-    /**
-     * Two ways to end up with a working build nobody ever sees, both of them
-     * silent at runtime — worth naming explicitly.
-     */
     private function warnAboutConfiguration(DocsLocation $location): void
     {
         if (Config::has('scramble.ui.logo')) {

@@ -21,7 +21,8 @@
 .method--head { color: var(--method-head); background: color-mix(in srgb, var(--method-head) 12%, transparent); }
 .method--options { color: var(--method-options); background: color-mix(in srgb, var(--method-options) 12%, transparent); }
 .method--trace { color: var(--method-trace); background: color-mix(in srgb, var(--method-trace) 12%, transparent); }
-.method--schema { color: var(--text-secondary); background: var(--surface-2); }
+.method--schema,
+.method--tag { color: var(--text-secondary); background: var(--surface-2); }
 
 .status {
   display: inline-flex;

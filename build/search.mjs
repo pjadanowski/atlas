@@ -12,10 +12,13 @@ import { url } from './url.mjs';
  *   s short description (display) · d description (search, longer)
  *   k keywords: operationId words, path segments, parameter and body field
  *     names, response schema names, x-keywords from the spec
+ *
+ * `m` doubles as the entry kind: an HTTP method for operations and
+ * webhooks, SCHEMA for models, TAG for tag overview pages.
  */
 export function buildSearchIndex(model) {
   return [
-    ...model.endpoints.map((endpoint) => ({
+    ...[...model.endpoints, ...(model.webhooks ?? [])].map((endpoint) => ({
       t: endpoint.title,
       m: endpoint.method,
       p: endpoint.path,
@@ -36,6 +39,19 @@ export function buildSearchIndex(model) {
         ...endpoint.responses.map((response) => response.schemaName),
       ]),
     })),
+    ...(model.tags ?? [])
+      .filter((tag) => tag.description && model.endpoints.some((endpoint) => endpoint.tagName === tag.name))
+      .map((tag) => ({
+        t: tag.displayName,
+        m: 'TAG',
+        p: '',
+        h: url(tag.href),
+        g: 'Tags',
+        o: tag.name,
+        s: truncate(tag.description, 120),
+        d: truncate(tag.description, 400),
+        k: keywords([tag.name]),
+      })),
     ...(model.models ?? []).map((entry) => ({
       t: entry.name,
       m: 'SCHEMA',

@@ -61,4 +61,27 @@ return [
     'css' => [],
 
     'js' => [],
+
+    /*
+     * Branding. `theme` picks a built-in color preset: default, emerald,
+     * ocean, violet, sunset, rose or mono. `logo` replaces the accent square
+     * in the top bar and `favicon` the generated icon — each an absolute file
+     * path (copied into the site) or a URL. Beyond that, use `css` above: the
+     * design tokens in assets/css/00-tokens.css can all be redefined.
+     */
+
+    'theme' => env('ATLAS_THEME', 'default'),
+
+    'logo' => null,
+
+    'favicon' => null,
+
+    /*
+     * Rebuild the site automatically when the API changes: each docs page
+     * request regenerates the specification and rebuilds only when it (or
+     * this config) differs from the last build. Meant for development —
+     * null means "only in the local environment". Production should run
+     * `php artisan atlas:build` on deploy instead.
+     */
+    'auto_build' => env('ATLAS_AUTO_BUILD'),
 ];

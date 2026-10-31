@@ -24,6 +24,9 @@ import { url } from './url.mjs';
 // exposed as a global because the file is also concatenated into an IIFE.
 import '../assets/search/10-engine.js';
 
+// Index entries that are pages but not operations (see build/search.mjs).
+const NON_OPERATIONS = new Set(['SCHEMA', 'TAG']);
+
 const engine = globalThis.AtlasSearch;
 
 export const PROTOCOL_VERSIONS = ['2025-06-18', '2025-03-26', '2024-11-05'];
@@ -166,7 +169,7 @@ export function createDocsMcp({ dist, base = '', siteUrl = '' }) {
       }
       case 'list_endpoints': {
         const tag = args.tag ? String(args.tag) : null;
-        const endpoints = index.filter((entry) => entry.m !== 'SCHEMA' && (!tag || entry.g === tag));
+        const endpoints = index.filter((entry) => !NON_OPERATIONS.has(entry.m) && (!tag || entry.g === tag));
         if (endpoints.length === 0) {
           return text(`No endpoints${tag ? ` tagged "${tag}"` : ''}. Tags: ${manifest.tags.join(', ')}`);
         }
@@ -184,7 +187,7 @@ export function createDocsMcp({ dist, base = '', siteUrl = '' }) {
         if (!id && !(method && path)) throw invalidParams('Pass operationId, or method and path');
         const entry = index.find(
           (candidate) =>
-            candidate.m !== 'SCHEMA' &&
+            !NON_OPERATIONS.has(candidate.m) &&
             (id
               ? candidate.o.toLowerCase() === id
               : candidate.m === method && candidate.p.replace(/\/$/, '') === path),

@@ -19,15 +19,61 @@ ${resourceIndex(model)}
 }
 
 function authSection(model) {
-  const bearer = model.auth.find((scheme) => scheme.scheme === 'bearer' || scheme.type === 'http');
-  if (!bearer) return '';
+  if (model.auth.length === 0) return '';
+  const used = new Set(model.endpoints.flatMap((endpoint) => endpoint.security.flat().map((entry) => entry.id)));
+  const schemes = model.auth.filter((scheme) => used.has(scheme.id) || model.auth.length <= 3);
+  const publicCount = model.endpoints.filter((endpoint) => !endpoint.requiresAuth && !endpoint.authOptional).length;
+  const cards = schemes.map((scheme) => authCard(scheme)).join('\n');
   return `<section class="doc-section" id="authentication">
   <h2>Authentication</h2>
-  <p>All protected endpoints expect a Bearer token in the <code>Authorization</code> header:</p>
-  <p class="auth-header-example"><code>Authorization: Bearer &lt;TOKEN&gt;</code></p>
-  ${bearer.description ? `<p>${mdInline(bearer.description)}</p>` : ''}
-  <p>Endpoints that do not require a token are marked <span class="pill pill--success">Public</span> in the reference.</p>
+  <p>${schemes.length === 1 ? 'Protected endpoints use one scheme:' : `The API accepts ${schemes.length} authentication schemes — each endpoint lists the ones it takes.`}</p>
+  <div class="auth-cards">
+${cards}
+  </div>
+  ${publicCount ? `<p>Endpoints that need no credentials are marked <span class="pill pill--success">Public</span> in the reference.</p>` : ''}
 </section>`;
+}
+
+function authCard(scheme) {
+  const example = authExample(scheme);
+  const flows = Object.entries(scheme.flows ?? {})
+    .map(([name, flow]) => {
+      const scopes = Object.entries(flow.scopes ?? {});
+      const urls = [
+        flow.authorizationUrl ? `authorize <code>${esc(flow.authorizationUrl)}</code>` : '',
+        flow.tokenUrl ? `token <code>${esc(flow.tokenUrl)}</code>` : '',
+      ].filter(Boolean).join(' · ');
+      return `<div class="auth-card-flow">
+        <p><strong>${esc(FLOW_NAMES[name] ?? name)}</strong>${urls ? ` — ${urls}` : ''}</p>
+        ${scopes.length ? `<ul class="auth-card-scopes">${scopes.map(([scope, description]) => `<li><code>${esc(scope)}</code> ${mdInline(description)}</li>`).join('')}</ul>` : ''}
+      </div>`;
+    })
+    .join('\n');
+  return `    <div class="auth-card" id="auth-${esc(scheme.id)}">
+      <p class="auth-card-head"><strong>${esc(scheme.label)}</strong> <code class="auth-scheme-id">${esc(scheme.id)}</code></p>
+      ${scheme.description ? `<p class="auth-card-desc">${mdInline(scheme.description)}</p>` : ''}
+      ${example ? `<p class="auth-header-example"><code>${esc(example)}</code></p>` : ''}
+      ${scheme.openIdConnectUrl ? `<p class="auth-card-desc">Discovery: <a href="${esc(scheme.openIdConnectUrl)}" rel="noopener" target="_blank">${esc(scheme.openIdConnectUrl)}</a></p>` : ''}
+      ${flows}
+    </div>`;
+}
+
+const FLOW_NAMES = {
+  clientCredentials: 'Client credentials',
+  authorizationCode: 'Authorization code',
+  password: 'Password',
+  implicit: 'Implicit',
+};
+
+function authExample(scheme) {
+  if (scheme.type === 'http' && scheme.scheme === 'basic') return 'Authorization: Basic base64(username:password)';
+  if (scheme.type === 'apiKey') {
+    if (scheme.location === 'header') return `${scheme.parameterName}: <API_KEY>`;
+    if (scheme.location === 'query') return `?${scheme.parameterName}=<API_KEY>`;
+    if (scheme.location === 'cookie') return `Cookie: ${scheme.parameterName}=<API_KEY>`;
+  }
+  if (scheme.type === 'mutualTLS') return '';
+  return 'Authorization: Bearer <TOKEN>';
 }
 
 function resourceIndex(model) {

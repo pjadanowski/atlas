@@ -19,7 +19,7 @@ export function pageShell({ model, assets, title, activeHref, content, codeColum
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>${esc(title)} · ${esc(model.title)}</title>
 <meta name="description" content="${esc(model.title)} – API documentation">
-<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Crect width='24' height='24' rx='7' fill='%235b5bd6'/%3E%3C/svg%3E">
+<link rel="icon" href="${assets.favicon ? esc(assets.favicon) : "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Crect width='24' height='24' rx='7' fill='%235b5bd6'/%3E%3C/svg%3E"}">
 <link rel="stylesheet" href="${esc(assets.css)}">${assets.customCss ? `\n<link rel="stylesheet" href="${esc(assets.customCss)}">` : ''}
 <link rel="preload" href="${esc(url('/assets/fonts/instrument-sans.woff2'))}" as="font" type="font/woff2" crossorigin>
 <link rel="preload" href="${esc(url('/assets/fonts/jetbrains-mono.woff2'))}" as="font" type="font/woff2" crossorigin>
@@ -39,9 +39,9 @@ export function pageShell({ model, assets, title, activeHref, content, codeColum
 <a class="skip-link" href="#content">Skip to content</a>
 <header class="topbar">
   <a class="topbar-brand" href="${esc(url('/'))}">
-    <span class="topbar-logo" aria-hidden="true"></span>
+    ${assets.logo ? `<img class="topbar-logo-img" src="${esc(assets.logo)}" alt="" height="24">` : '<span class="topbar-logo" aria-hidden="true"></span>'}
     <span class="topbar-title">${esc(model.title)}</span>
-    <span class="topbar-version">v${esc(model.version)}</span>
+    ${model.version ? `<span class="topbar-version">v${esc(model.version)}</span>` : ''}
   </a>
   <div class="topbar-search">
     <button type="button" class="search-trigger js-only" data-search-open>

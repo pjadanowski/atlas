@@ -3,6 +3,7 @@
 namespace Pjadanowski\Atlas\Http\Controllers;
 
 use Pjadanowski\Atlas\Support\DocsLocation;
+use Pjadanowski\Atlas\Support\SiteBuilder;
 use Symfony\Component\HttpFoundation\BinaryFileResponse;
 
 /**
@@ -24,8 +25,14 @@ class ServeGeneratedDocs
         'woff2' => 'font/woff2',
     ];
 
-    public function __invoke(DocsLocation $location, string $path): BinaryFileResponse
+    public function __invoke(DocsLocation $location, SiteBuilder $builder, string $path): BinaryFileResponse
     {
+        // Pages (not fingerprinted assets) trigger the development auto-build,
+        // so navigating the docs after a code change shows the new API.
+        if (! preg_match('/\.(css|js|woff2|png|svg|ico)$/', $path)) {
+            $builder->ensureFresh();
+        }
+
         $file = $this->resolve($location->outputPath(), $path);
 
         abort_if($file === null, 404);
