@@ -326,3 +326,100 @@ html.js .sidebar-resizer {
   max-width: 140px;
   object-fit: contain;
 }
+
+/* ---- Narrow screens: sidebar behind a menu toggle (CSS-only checkbox) ---- */
+
+.nav-toggle-input,
+.nav-toggle {
+  display: none;
+}
+
+@media (max-width: 900px) {
+  .topbar {
+    gap: 8px;
+    padding: 0 10px 0 8px;
+  }
+
+  .nav-toggle {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    width: 36px;
+    height: 36px;
+    border-radius: var(--radius-control);
+    color: var(--text-secondary);
+    cursor: pointer;
+  }
+
+  .nav-toggle:hover {
+    background: var(--surface-2);
+  }
+
+  .topbar-brand {
+    min-width: 0;
+    flex: 1;
+  }
+
+  .topbar-title {
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .topbar-version,
+  .auth-trigger span:not(.auth-dot) {
+    display: none;
+  }
+
+  .topbar-search {
+    flex: 0 0 auto;
+  }
+
+  .topbar-actions {
+    gap: 4px;
+    flex-shrink: 0;
+  }
+
+  .auth-trigger {
+    padding: 0 9px;
+  }
+
+  .sidebar {
+    display: none;
+    max-height: none;
+  }
+
+  .nav-toggle-input:checked ~ .shell .sidebar {
+    display: block;
+  }
+
+  .nav-toggle-input:checked ~ .topbar .nav-toggle {
+    color: var(--accent);
+    background: var(--accent-soft);
+  }
+}
+
+@media (max-width: 900px) {
+  .topbar-logo,
+  .topbar-logo-img {
+    flex-shrink: 0;
+  }
+
+  .search-trigger kbd {
+    display: none;
+  }
+
+  .search-trigger {
+    width: auto;
+    min-width: 0;
+    padding: 0 10px;
+  }
+}
+
+@media (max-width: 480px) {
+  .mcp-trigger,
+  .spec-download {
+    display: none;
+  }
+}

@@ -37,7 +37,11 @@ export function pageShell({ model, assets, title, activeHref, content, codeColum
 </head>
 <body data-auth-schemes="${esc(JSON.stringify(model.auth.map(({ id, type, scheme, location, parameterName }) => ({ id, type, scheme, location, name: parameterName }))))}" data-tryit-js="${esc(assets.tryitJs)}" data-tryit-css="${esc(assets.tryitCss)}" data-search-js="${esc(assets.searchJs)}" data-search-index="${esc(assets.searchIndex)}">
 <a class="skip-link" href="#content">Skip to content</a>
+<input class="nav-toggle-input" type="checkbox" id="nav-toggle" aria-hidden="true" tabindex="-1">
 <header class="topbar">
+  <label class="nav-toggle" for="nav-toggle" aria-label="Toggle navigation" title="Menu">
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M4 7h16M4 12h16M4 17h16"/></svg>
+  </label>
   <a class="topbar-brand" href="${esc(url('/'))}">
     ${assets.logo ? `<img class="topbar-logo-img" src="${esc(assets.logo)}" alt="" height="24">` : '<span class="topbar-logo" aria-hidden="true"></span>'}
     <span class="topbar-title">${esc(model.title)}</span>
