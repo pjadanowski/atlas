@@ -42,7 +42,7 @@ export function responsePanel(endpoint, prefix = 'res') {
   return codePanel({ groupId, title: '<span class="code-panel-label">Response</span>', tabs, ariaLabel: 'Response example' });
 }
 
-export function codePanel({ groupId, title, tabs, ariaLabel }) {
+export function codePanel({ groupId, title, tabs, ariaLabel, className = '' }) {
   const inputs = tabs
     .map(
       (tab) =>
@@ -59,7 +59,7 @@ export function codePanel({ groupId, title, tabs, ariaLabel }) {
     </div>`,
     )
     .join('\n');
-  return `<section class="code-panel" aria-label="${esc(ariaLabel)}">
+  return `<section class="code-panel${className ? ` ${className}` : ''}" aria-label="${esc(ariaLabel)}">
   <header class="code-panel-head">
     <div class="code-panel-title">${title}</div>
     <div class="code-panel-actions">
@@ -109,6 +109,27 @@ export function homeCodeColumn(model) {
   <div class="code-tabs">
     <div class="code-pane">
       <pre tabindex="0"><code>${esc(model.baseUrl)}</code></pre>
+    </div>
+  </div>
+</section>`;
+}
+
+/** Webhook pages: the payload your server receives, no request snippets. */
+export function webhookCodeColumn(hook) {
+  const content = hook.requestBody?.contents?.[0];
+  const example = content?.examples?.[0]?.value;
+  if (example === undefined || example === null) return '';
+  return `<section class="code-panel" aria-label="Webhook payload">
+  <header class="code-panel-head">
+    <div class="code-panel-title">${methodBadge(hook.method)} <span class="code-panel-path">${esc(hook.webhookName)}</span></div>
+    <div class="code-panel-actions">
+      ${expandButton()}
+      ${copyButton(null, 'Copy code')}
+    </div>
+  </header>
+  <div class="code-tabs">
+    <div class="code-pane">
+      <pre tabindex="0"><code>${highlight(JSON.stringify(example, null, 2), 'json')}</code></pre>
     </div>
   </div>
 </section>`;

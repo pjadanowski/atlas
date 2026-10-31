@@ -51,7 +51,7 @@ export function deref(spec, node) {
  * seen set stops self-referential allOf chains from recursing forever.
  */
 export function mergeAllOf(spec, schema, seen = new Set()) {
-  if (!schema?.allOf) return schema;
+  if (!schema?.allOf) return normalizeSchema(spec, schema);
   if (seen.has(schema)) return { ...schema, allOf: undefined };
   seen.add(schema);
   const merged = {};
@@ -72,5 +72,82 @@ export function mergeAllOf(spec, schema, seen = new Set()) {
   if (required.size > 0) merged.required = [...required];
   else merged.required = undefined;
   merged.allOf = undefined;
-  return merged;
+  return normalizeSchema(spec, merged);
+}
+
+const isNullSchema = (node) => node?.type === 'null' || (Array.isArray(node?.type) && node.type.length === 1 && node.type[0] === 'null');
+
+/**
+ * Folds OpenAPI 3.1 / JSON Schema idioms into the 3.0 shape the renderers
+ * read, so nothing downstream has to know both dialects:
+ *
+ * - `type: ["string", "null"]` → `type: "string"` + `nullable`; several
+ *   non-null types stay listed in `types` for the label.
+ * - `anyOf|oneOf: [X, {type: "null"}]` → X + `nullable` — how Scramble
+ *   writes a nullable `$ref`, which would otherwise read as a two-way union.
+ * - `examples: [...]` (3.1 schema keyword) → `example` when none is set.
+ * - `const` → a one-value enum, so pills and examples pick it up.
+ * - numeric `exclusiveMinimum|Maximum` (3.1) vs boolean modifiers (3.0) are
+ *   both exposed as `exclusiveMin|Max` bounds.
+ *
+ * Returns the input untouched when there is nothing to fold.
+ */
+export function normalizeSchema(spec, schema) {
+  if (!schema || typeof schema !== 'object') return schema;
+  let out = schema;
+  const edit = () => {
+    if (out === schema) out = { ...schema };
+    return out;
+  };
+
+  if (Array.isArray(schema.type)) {
+    const types = schema.type.filter((type) => type !== 'null');
+    edit();
+    if (types.length !== schema.type.length) out.nullable = true;
+    out.type = types.length === 1 ? types[0] : types.length === 0 ? 'null' : undefined;
+    if (types.length > 1) out.types = types;
+  }
+
+  for (const key of ['anyOf', 'oneOf']) {
+    const branches = schema[key];
+    if (!Array.isArray(branches)) continue;
+    const real = branches.filter((branch) => !isNullSchema(branch));
+    if (real.length === branches.length) continue;
+    if (real.length === 1) {
+      const { node, name } = deref(spec, real[0]);
+      const { [key]: _dropped, ...siblings } = out;
+      const target = mergeAllOf(spec, node);
+      out = { ...target, ...siblings, nullable: true };
+      if (name && !out['x-ref-name']) out['x-ref-name'] = name;
+    } else {
+      edit()[key] = real;
+      out.nullable = true;
+    }
+  }
+
+  if (out.example === undefined && Array.isArray(out.examples) && out.examples.length > 0) {
+    edit().example = out.examples[0];
+  }
+  if (out.const !== undefined && !out.enum) {
+    edit().enum = [out.const];
+  }
+  if (typeof out.exclusiveMinimum === 'number') edit().exclusiveMin = out.exclusiveMinimum;
+  else if (out.exclusiveMinimum === true && out.minimum !== undefined) {
+    edit().exclusiveMin = out.minimum;
+    out.minimum = undefined;
+  }
+  if (typeof out.exclusiveMaximum === 'number') edit().exclusiveMax = out.exclusiveMaximum;
+  else if (out.exclusiveMaximum === true && out.maximum !== undefined) {
+    edit().exclusiveMax = out.maximum;
+    out.maximum = undefined;
+  }
+  return out;
+}
+
+/**
+ * Display name of a schema reached through a nullable wrapper — the name a
+ * plain `$ref` would have given it, kept by normalizeSchema.
+ */
+export function schemaRefName(schema, fallback = null) {
+  return fallback ?? schema?.['x-ref-name'] ?? null;
 }

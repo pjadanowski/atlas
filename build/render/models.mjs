@@ -1,7 +1,7 @@
 import { descriptionHtml, esc } from '../text.mjs';
 import { url } from '../url.mjs';
 import { highlight } from '../highlight.mjs';
-import { attributeRows } from './schema.mjs';
+import { schemaBody } from './schema.mjs';
 import { copyButton, expandButton } from './ui.mjs';
 
 /** Index page: every schema from components.schemas, grouped by first letter. */
@@ -34,9 +34,11 @@ ${sections}
 
 function modelCard(entry) {
   const count = Object.keys(entry.schema?.properties ?? {}).length;
+  const variants = (entry.schema?.oneOf ?? entry.schema?.anyOf)?.length ?? 0;
+  const summary = count || !variants ? `${count} ${count === 1 ? 'field' : 'fields'}` : `${variants} variants`;
   return `      <a class="model-card" href="${esc(url(entry.href))}">
         <span class="model-card-name">${esc(entry.name)}</span>
-        <span class="model-card-count">${count} ${count === 1 ? 'field' : 'fields'}</span>
+        <span class="model-card-count">${summary}</span>
       </a>`;
 }
 
@@ -44,8 +46,8 @@ function modelCard(entry) {
 export function modelContent(spec, entry) {
   // A model page is the whole shape of one schema — show it, don't make the
   // reader click through every level to see what they came for.
-  const rows = attributeRows(spec, entry.schema, { expanded: true });
-  const nested = rows.includes('<details class="child-attrs"');
+  const body = schemaBody(spec, entry.schema, { expanded: true, mode: 'model' });
+  const nested = body.includes('<details class="child-attrs"');
   return `<article class="endpoint">
 <header class="endpoint-header">
   <nav class="crumbs" aria-label="Breadcrumb">
@@ -62,7 +64,7 @@ export function modelContent(spec, entry) {
   <div class="doc-section-head">
     <h2>Attributes</h2>
 ${nested ? attributeTools() : ''}  </div>
-  ${rows ? `<div class="attr-list">\n${rows}\n  </div>` : '<p class="doc-section-meta">No documented attributes.</p>'}
+  ${body || '<p class="doc-section-meta">No documented attributes.</p>'}
 </section>
 </article>`;
 }

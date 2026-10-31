@@ -1,3 +1,5 @@
+import { highlight } from './highlight.mjs';
+
 const HTML_ESCAPES = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' };
 
 export function esc(value) {
@@ -78,7 +80,7 @@ export function mdInline(value) {
   if (verbatim(value)) return String(value ?? '');
   const links = [];
   // NUL doubles as the link-placeholder sentinel below — strip it from input.
-  let text = String(value ?? '').replaceAll('\x00', '').replace(
+  let text = String(value ?? '').replace(/[\x00\x01]/g, '').replace(
     /<a\s[^>]*href="([^"]+)"[^>]*>([\s\S]*?)<\/a>/gi,
     (match, href, inner) => {
       links.push({ href, label: inner.replace(/<[^>]+>/g, '') });
@@ -86,20 +88,29 @@ export function mdInline(value) {
     },
   );
   text = text.replace(/<\/?p>/gi, '\n').replace(/<\/?br\s*\/?>/gi, '\n');
+  // Inline code first, parked like links, so `**x**` inside it stays literal.
+  const codes = [];
+  text = text.replace(/`([^`\n]+)`/g, (match, code) => {
+    codes.push(code);
+    return `\x01${codes.length - 1}\x01`;
+  });
+  text = text.replace(/\[([^\]\n]+)\]\(([^)\s]+)\)/g, (match, label, href) => {
+    links.push({ href, label });
+    return `\x00${links.length - 1}\x00`;
+  });
   const html = esc(text)
     .replaceAll('\n', '<br>')
-    .replace(/`([^`]+)`/g, '<code>$1</code>')
     .replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>')
-    .replace(
-      /\[([^\]]+)\]\((https?:[^)\s]+)\)/g,
-      '<a href="$2" rel="noopener" target="_blank">$1</a>',
-    )
-    .replace(/&lt;(\/?)(strong|b|i|code)&gt;/gi, '<$1$2>');
+    .replace(/(^|[\s(])\*([^*\s][^*]*?)\*(?=[\s.,;:!?)]|$)/g, '$1<em>$2</em>')
+    .replace(/(^|[\s(])_([^_\s][^_]*?)_(?=[\s.,;:!?)]|$)/g, '$1<em>$2</em>')
+    .replace(/&lt;(\/?)(strong|b|i|em|code)&gt;/gi, '<$1$2>')
+    .replace(/\x01(\d+)\x01/g, (match, index) => `<code>${esc(codes[Number(index)])}</code>`);
   return html.replace(/\x00(\d+)\x00/g, (match, index) => {
     const { href, label } = links[Number(index)];
     const url = safeUrl(href);
     if (!url) return esc(label);
-    return `<a href="${esc(url)}" rel="noopener" target="_blank">${esc(label)}</a>`;
+    const external = /^https?:/i.test(url) && !url.startsWith(linkBaseUrl || '\x00');
+    return `<a href="${esc(url)}"${external ? ' rel="noopener" target="_blank"' : ''}>${esc(label)}</a>`;
   });
 }
 
@@ -121,31 +132,85 @@ function safeUrl(href) {
  * Block markdown subset: headings (#–####), unordered/ordered lists and
  * paragraphs — the constructs actually present in spec descriptions.
  */
-export function mdBlock(value) {
+export function mdBlock(value, { headingIds = false } = {}) {
   const text = String(value ?? '').replace(/\r\n/g, '\n').trim();
   if (!text) return '';
   if (verbatim(text)) return `<div class="spec-html">${text}</div>`;
+  // Fenced code may hold blank lines: park each fence before splitting.
+  const fences = [];
+  const unfenced = text.replace(/^[ \t]*```([\w+-]*)[^\n]*\n([\s\S]*?)\n[ \t]*```[ \t]*$/gm, (match, lang, code) => {
+    fences.push({ lang, code });
+    return `\n\x02${fences.length - 1}\x02\n`;
+  });
   // Specs write headings mid-paragraph ("## Wichtig !\n ### Details …");
   // give every heading line its own block before splitting on blank lines.
-  const normalized = text
+  const normalized = unfenced
     .split('\n')
-    .map((line) => (/^\s*#{1,6}\s/.test(line) ? `\n${line.trim()}\n` : line))
+    .map((line) => (/^\s*#{1,6}\s/.test(line) || /^\s*(-{3,}|\*{3,})\s*$/.test(line) ? `\n${line.trim()}\n` : line))
     .join('\n');
-  return normalized.split(/\n{2,}/).map(renderBlock).filter(Boolean).join('\n');
+  return normalized
+    .split(/\n{2,}/)
+    .map((block) => renderBlock(block, { fences, headingIds }))
+    .filter(Boolean)
+    .join('\n');
 }
 
-function renderBlock(block) {
+/**
+ * h1–h3 headings of a markdown description with the ids mdBlock gives them
+ * (`headingIds`) — the home page's table of contents in the sidebar.
+ */
+export function markdownHeadings(value) {
+  const text = String(value ?? '');
+  if (verbatim(text)) return [];
+  const out = [];
+  let inFence = false;
+  for (const line of text.split('\n')) {
+    if (/^\s*```/.test(line)) inFence = !inFence;
+    const match = !inFence && /^\s*(#{1,3})\s+(.+?)\s*#*\s*$/.exec(line);
+    if (match) out.push({ level: match[1].length, text: plainText(match[2]), id: headingId(match[2]) });
+  }
+  return out;
+}
+
+function headingId(text) {
+  return `intro-${slugify(plainText(text))}`;
+}
+
+function plainText(markdown) {
+  return String(markdown).replace(/[`*_]/g, '').replace(/\[([^\]]+)\]\([^)]*\)/g, '$1').trim();
+}
+
+function renderBlock(block, { fences, headingIds }) {
   const trimmed = block.trim();
   if (!trimmed) return '';
+
+  const fence = /^\x02(\d+)\x02$/.exec(trimmed);
+  if (fence) {
+    const { lang, code } = fences[Number(fence[1])];
+    const language = { sh: 'bash', shell: 'bash', js: 'javascript', ts: 'javascript', py: 'python' }[lang] ?? lang;
+    return `<pre class="md-code" tabindex="0"><code>${highlight(code, language || 'text')}</code></pre>`;
+  }
+
+  if (/^(-{3,}|\*{3,})$/.test(trimmed)) return '<hr class="md-rule">';
 
   const heading = trimmed.match(/^(#{1,6})\s+([\s\S]+)$/);
   if (heading) {
     // "#" maps to h2 (the page h1 is taken), deeper levels shift accordingly.
     const level = Math.min(heading[1].length + 1, 5);
-    return `<h${level} class="md-heading">${mdInline(heading[2].replace(/\n/g, ' '))}</h${level}>`;
+    const text = heading[2].replace(/\n/g, ' ').replace(/\s+#+\s*$/, '');
+    const id = headingIds && heading[1].length <= 3 ? ` id="${headingId(text)}"` : '';
+    return `<h${level} class="md-heading"${id}>${mdInline(text)}</h${level}>`;
   }
 
   const lines = trimmed.split('\n');
+  if (lines.every((line) => /^\s*>/.test(line))) {
+    const inner = lines.map((line) => line.replace(/^\s*>\s?/, '')).join('\n');
+    return `<blockquote class="md-quote">${mdBlock(inner)}</blockquote>`;
+  }
+  if (lines.length >= 2 && /^\s*\|?\s*:?-{2,}:?\s*(\|\s*:?-{2,}:?\s*)*\|?\s*$/.test(lines[1]) && lines[0].includes('|')) {
+    return markdownTable(lines);
+  }
+
   if (lines.every((line) => /^\s*[-*]\s+/.test(line))) {
     const items = lines.map((line) => `<li>${mdInline(line.replace(/^\s*[-*]\s+/, ''))}</li>`);
     return `<ul class="md-list">${items.join('')}</ul>`;
@@ -155,6 +220,15 @@ function renderBlock(block) {
     return `<ol class="md-list">${items.join('')}</ol>`;
   }
 
+  // A paragraph with one embedded code fence placeholder: render both parts.
+  if (/\x02\d+\x02/.test(trimmed)) {
+    return trimmed
+      .split(/(\x02\d+\x02)/)
+      .map((part) => renderBlock(part, { fences, headingIds }))
+      .filter(Boolean)
+      .join('\n');
+  }
+
   // Long <br>-separated legends collapse just like plain descriptions.
   const legend = splitLines(trimmed);
   if (legend.length > COLLAPSE_AFTER_LINES) return collapsibleLines(legend);
@@ -162,9 +236,21 @@ function renderBlock(block) {
   return `<p>${mdInline(trimmed)}</p>`;
 }
 
+function markdownTable(lines) {
+  const cells = (line) => line.trim().replace(/^\|/, '').replace(/\|$/, '').split('|').map((cell) => cell.trim());
+  const align = cells(lines[1]).map((cell) => (cell.startsWith(':') && cell.endsWith(':') ? 'center' : cell.endsWith(':') ? 'right' : ''));
+  const style = (index) => (align[index] ? ` style="text-align:${align[index]}"` : '');
+  const head = cells(lines[0]).map((cell, index) => `<th${style(index)}>${mdInline(cell)}</th>`).join('');
+  const rows = lines
+    .slice(2)
+    .map((line) => `<tr>${cells(line).map((cell, index) => `<td${style(index)}>${mdInline(cell)}</td>`).join('')}</tr>`)
+    .join('');
+  return `<div class="md-table-wrap"><table class="md-table"><thead><tr>${head}</tr></thead><tbody>${rows}</tbody></table></div>`;
+}
+
 /** True when a description needs block-level markdown rendering. */
 export function hasBlockMarkdown(value) {
-  return /^\s*#{1,6}\s|^\s*[-*]\s+|^\s*\d+[.)]\s+|\n{2,}/m.test(String(value ?? ''));
+  return /^\s*#{1,6}\s|^\s*[-*]\s+|^\s*\d+[.)]\s+|^\s*>|^\s*```|^\s*\|.*\|\s*$|\n{2,}/m.test(String(value ?? ''));
 }
 
 const COLLAPSE_AFTER_LINES = 18;

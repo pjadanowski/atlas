@@ -99,8 +99,8 @@ class IntegrationTest extends TestCase
         $this->get('/docs/api/openapi.json')->assertOk();
 
         // Each documented endpoint became its own page.
-        $this->get('/docs/api/sonstige/get-widgets/')->assertOk();
-        $this->get('/docs/api/sonstige/post-widgets/')->assertOk();
+        $this->get('/docs/api/other/get-widgets/')->assertOk();
+        $this->get('/docs/api/other/post-widgets/')->assertOk();
     }
 
     public function test_the_documentation_is_also_an_mcp_server(): void
@@ -129,7 +129,7 @@ class IntegrationTest extends TestCase
             'name' => 'search_api', 'arguments' => ['query' => 'widgts'],
         ]))->assertOk()->json('result.content.0.text');
         $this->assertStringContainsString('widgets', $found);
-        $this->assertStringContainsString('http://localhost/docs/api/sonstige/', $found);
+        $this->assertStringContainsString('http://localhost/docs/api/other/', $found);
 
         $index = json_decode(file_get_contents($this->output.'/assets/search-index.json'), true);
         $endpoint = collect($index)->firstWhere('m', 'GET');

@@ -133,13 +133,22 @@
   background: color-mix(in srgb, #ffffff 10%, transparent);
 }
 
-/* Pane visibility: input N checked → div N+1 visible (div 1 is the tab bar). */
+/* Pane visibility: input N checked → div N+1 visible (div 1 is the tab bar).
+   Generated for up to 14 tabs — snippet languages are the widest group. */
 .code-tabs > input:nth-of-type(1):checked ~ div:nth-of-type(2),
 .code-tabs > input:nth-of-type(2):checked ~ div:nth-of-type(3),
 .code-tabs > input:nth-of-type(3):checked ~ div:nth-of-type(4),
 .code-tabs > input:nth-of-type(4):checked ~ div:nth-of-type(5),
 .code-tabs > input:nth-of-type(5):checked ~ div:nth-of-type(6),
-.code-tabs > input:nth-of-type(6):checked ~ div:nth-of-type(7) {
+.code-tabs > input:nth-of-type(6):checked ~ div:nth-of-type(7),
+.code-tabs > input:nth-of-type(7):checked ~ div:nth-of-type(8),
+.code-tabs > input:nth-of-type(8):checked ~ div:nth-of-type(9),
+.code-tabs > input:nth-of-type(9):checked ~ div:nth-of-type(10),
+.code-tabs > input:nth-of-type(10):checked ~ div:nth-of-type(11),
+.code-tabs > input:nth-of-type(11):checked ~ div:nth-of-type(12),
+.code-tabs > input:nth-of-type(12):checked ~ div:nth-of-type(13),
+.code-tabs > input:nth-of-type(13):checked ~ div:nth-of-type(14),
+.code-tabs > input:nth-of-type(14):checked ~ div:nth-of-type(15) {
   display: block;
 }
 
@@ -149,7 +158,15 @@
 .code-tabs > input:nth-of-type(3):checked ~ .code-tabbar label:nth-of-type(3),
 .code-tabs > input:nth-of-type(4):checked ~ .code-tabbar label:nth-of-type(4),
 .code-tabs > input:nth-of-type(5):checked ~ .code-tabbar label:nth-of-type(5),
-.code-tabs > input:nth-of-type(6):checked ~ .code-tabbar label:nth-of-type(6) {
+.code-tabs > input:nth-of-type(6):checked ~ .code-tabbar label:nth-of-type(6),
+.code-tabs > input:nth-of-type(7):checked ~ .code-tabbar label:nth-of-type(7),
+.code-tabs > input:nth-of-type(8):checked ~ .code-tabbar label:nth-of-type(8),
+.code-tabs > input:nth-of-type(9):checked ~ .code-tabbar label:nth-of-type(9),
+.code-tabs > input:nth-of-type(10):checked ~ .code-tabbar label:nth-of-type(10),
+.code-tabs > input:nth-of-type(11):checked ~ .code-tabbar label:nth-of-type(11),
+.code-tabs > input:nth-of-type(12):checked ~ .code-tabbar label:nth-of-type(12),
+.code-tabs > input:nth-of-type(13):checked ~ .code-tabbar label:nth-of-type(13),
+.code-tabs > input:nth-of-type(14):checked ~ .code-tabbar label:nth-of-type(14) {
   color: var(--code-text);
   background: color-mix(in srgb, #ffffff 9%, transparent);
 }
@@ -160,7 +177,15 @@
 .code-tabs > input:nth-of-type(3):focus-visible ~ .code-tabbar label:nth-of-type(3),
 .code-tabs > input:nth-of-type(4):focus-visible ~ .code-tabbar label:nth-of-type(4),
 .code-tabs > input:nth-of-type(5):focus-visible ~ .code-tabbar label:nth-of-type(5),
-.code-tabs > input:nth-of-type(6):focus-visible ~ .code-tabbar label:nth-of-type(6) {
+.code-tabs > input:nth-of-type(6):focus-visible ~ .code-tabbar label:nth-of-type(6),
+.code-tabs > input:nth-of-type(7):focus-visible ~ .code-tabbar label:nth-of-type(7),
+.code-tabs > input:nth-of-type(8):focus-visible ~ .code-tabbar label:nth-of-type(8),
+.code-tabs > input:nth-of-type(9):focus-visible ~ .code-tabbar label:nth-of-type(9),
+.code-tabs > input:nth-of-type(10):focus-visible ~ .code-tabbar label:nth-of-type(10),
+.code-tabs > input:nth-of-type(11):focus-visible ~ .code-tabbar label:nth-of-type(11),
+.code-tabs > input:nth-of-type(12):focus-visible ~ .code-tabbar label:nth-of-type(12),
+.code-tabs > input:nth-of-type(13):focus-visible ~ .code-tabbar label:nth-of-type(13),
+.code-tabs > input:nth-of-type(14):focus-visible ~ .code-tabbar label:nth-of-type(14) {
   outline: 2px solid var(--accent);
   outline-offset: 2px;
 }
@@ -174,10 +199,6 @@
 
 .code-panel--inline {
   margin: 14px 0 4px;
-}
-
-.code-panel--inline .code-pane {
-  display: block;
 }
 
 .code-panel--inline pre {

@@ -11,9 +11,9 @@ import { configureBase, url } from './url.mjs';
 import { buildSearchIndex } from './search.mjs';
 import { pageShell } from './render/layout.mjs';
 import { endpointContent } from './render/endpoint.mjs';
-import { endpointCodeColumn, homeCodeColumn } from './render/codecol.mjs';
+import { endpointCodeColumn, homeCodeColumn, webhookCodeColumn } from './render/codecol.mjs';
 import { tryItDrawer } from './render/tryit.mjs';
-import { homeContent } from './render/home.mjs';
+import { homeContent, tagContent } from './render/home.mjs';
 import { modelContent, modelCodeColumn, modelsIndexContent } from './render/models.mjs';
 import { endpointMarkdown, llmsIndex, modelMarkdown } from './markdown.mjs';
 import { mcpManifest } from './mcp.mjs';
@@ -118,6 +118,33 @@ export async function buildDocs({
     await writeFile(join(directory, 'index.md'), endpointMarkdown(model, endpoint));
   }
 
+  for (const tag of model.tags) {
+    if (!model.endpoints.some((endpoint) => endpoint.tagName === tag.name)) continue;
+    const directory = join(DIST, tag.href.slice(1));
+    await mkdir(directory, { recursive: true });
+    await writePage(join(directory, 'index.html'), {
+      model,
+      assets,
+      title: tag.displayName,
+      activeHref: tag.href,
+      content: tagContent(model, tag),
+    });
+  }
+
+  for (const hook of model.webhooks) {
+    const directory = join(DIST, hook.href.slice(1));
+    await mkdir(directory, { recursive: true });
+    await writePage(join(directory, 'index.html'), {
+      model,
+      assets,
+      title: `${hook.title} – Webhooks`,
+      activeHref: hook.href,
+      content: endpointContent(spec, model, hook),
+      codeColumn: webhookCodeColumn(hook),
+    });
+    await writeFile(join(directory, 'index.md'), endpointMarkdown(model, hook));
+  }
+
   if (model.models.length) {
     await mkdir(join(DIST, 'models'), { recursive: true });
     await writePage(join(DIST, 'models', 'index.html'), {
@@ -158,7 +185,8 @@ export async function buildDocs({
   }
 
   const elapsed = Math.round(performance.now() - started);
-  const pages = model.endpoints.length + 1 + (model.models.length ? model.models.length + 1 : 0);
+  const tagPages = model.tags.filter((tag) => model.endpoints.some((endpoint) => endpoint.tagName === tag.name)).length;
+  const pages = model.endpoints.length + model.webhooks.length + tagPages + 1 + (model.models.length ? model.models.length + 1 : 0);
   const mount = mountedAt ? ` (served from ${mountedAt}/)` : '';
   console.log(`✓ ${pages} pages generated in ${elapsed}ms → ${out}/${mount}`);
 }

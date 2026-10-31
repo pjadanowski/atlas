@@ -1,8 +1,8 @@
 import { descriptionHtml, esc, mdBlock, mdInline, slugify } from '../text.mjs';
 import { url } from '../url.mjs';
 import { highlight } from '../highlight.mjs';
-import { attributeRows, typeLabel } from './schema.mjs';
-import { requestPanel, responsePanel } from './codecol.mjs';
+import { constraintList, schemaBody, typeLabel } from './schema.mjs';
+import { codePanel, requestPanel, responsePanel } from './codecol.mjs';
 import { copyButton, enumPills, expandButton, methodBadge, statusBadge } from './ui.mjs';
 
 /** Main-column article for one endpoint: header + tabbed documentation. */
@@ -11,42 +11,48 @@ export function endpointContent(spec, model, endpoint) {
     { id: 'params', label: 'Parameters', content: parametersPane(endpoint) },
     { id: 'body', label: 'Request Body', content: requestBodyPane(spec, endpoint.requestBody) },
     { id: 'responses', label: 'Responses', content: responsesPane(spec, endpoint.responses) },
-    { id: 'examples', label: 'Examples', content: examplesPane(model, endpoint) },
+    { id: 'callbacks', label: 'Callbacks', content: callbacksPane(spec, endpoint.callbacks) },
+    { id: 'examples', label: 'Examples', content: endpoint.kind === 'webhook' ? '' : examplesPane(model, endpoint) },
   ]);
   return `<article class="endpoint">
-${endpointHeader(endpoint)}
+${endpointHeader(endpoint, model)}
 ${tabs}
 ${pagerSection(model, endpoint)}
 </article>`;
 }
 
-function endpointHeader(endpoint) {
+function endpointHeader(endpoint, model) {
+  const tag = model.tags.find((candidate) => candidate.name === endpoint.tagName);
+  const tagCrumb = tag?.description ? `<a href="${esc(url(tag.href))}">${esc(endpoint.tag)}</a>` : `<span>${esc(endpoint.tag)}</span>`;
+  const route = endpoint.kind === 'webhook'
+    ? `<div class="endpoint-route">
+    ${methodBadge(endpoint.method)}
+    <span class="endpoint-path endpoint-path--webhook">Webhook · sent by the API to your endpoint</span>
+  </div>`
+    : `<div class="endpoint-route">
+    ${methodBadge(endpoint.method)}
+    <code class="endpoint-path">${esc(endpoint.path)}</code>
+    ${copyButton(endpoint.path, 'Copy path')}
+  </div>`;
   return `<header class="endpoint-header">
   <nav class="crumbs" aria-label="Breadcrumb">
     <a href="${esc(url('/'))}">API</a>
     <span class="crumbs-sep" aria-hidden="true">›</span>
-    <span>${esc(endpoint.tag)}</span>
+    ${tagCrumb}
     <span class="crumbs-sep" aria-hidden="true">›</span>
     <span aria-current="page">${esc(endpoint.title)}</span>
   </nav>
-  <h1>${esc(endpoint.title)}</h1>
-  <div class="endpoint-route">
-    ${methodBadge(endpoint.method)}
-    <code class="endpoint-path">${esc(endpoint.path)}</code>
-    ${copyButton(endpoint.path, 'Copy path')}
-  </div>
+  <h1${endpoint.deprecated ? ' class="is-deprecated"' : ''}>${esc(endpoint.title)}</h1>
+  ${route}
   ${endpoint.description ? `<div class="endpoint-desc">${mdBlock(endpoint.description)}</div>` : ''}
   ${metaStrip(endpoint)}
+  ${endpoint.externalDocs?.url ? `<p class="endpoint-extdocs"><a href="${esc(endpoint.externalDocs.url)}" rel="noopener" target="_blank">${esc(endpoint.externalDocs.description ?? 'External documentation')} ↗</a></p>` : ''}
 </header>`;
 }
 
 function metaStrip(endpoint) {
   const items = [];
-  items.push(
-    endpoint.requiresAuth
-      ? metaItem(lockIcon(), 'Bearer token', 'Authentication required')
-      : metaItem(globeIcon(), 'Public', 'No token required'),
-  );
+  if (endpoint.kind !== 'webhook') items.push(securityItem(endpoint));
   if (endpoint.requestBody) {
     items.push(
       metaItem(
@@ -62,6 +68,24 @@ function metaStrip(endpoint) {
   return `<div class="endpoint-meta">
     ${items.join('\n    ')}
   </div>`;
+}
+
+/**
+ * Which credentials the endpoint takes: alternatives joined by "or", schemes
+ * that must be sent together by "+", with OAuth scopes listed under them.
+ */
+function securityItem(endpoint) {
+  const alternatives = endpoint.security.filter((alternative) => alternative.length > 0);
+  if (alternatives.length === 0) return metaItem(globeIcon(), 'Public', 'No authentication required');
+  const label = alternatives
+    .map((alternative) => alternative.map((entry) => esc(entry.scheme.label)).join(' + '))
+    .join(' <span class="meta-or">or</span> ');
+  const scopes = [...new Set(alternatives.flat().flatMap((entry) => entry.scopes))];
+  const sub = endpoint.authOptional ? 'Authentication optional' : 'Authentication required';
+  const scopeHtml = scopes.length
+    ? `<span class="meta-scopes">${scopes.map((scope) => `<code class="scope-pill">${esc(scope)}</code>`).join('')}</span>`
+    : '';
+  return metaItem(lockIcon(), `${label}${scopeHtml}`, sub);
 }
 
 function metaItem(icon, main, sub, extraClass = '') {
@@ -105,6 +129,7 @@ function parametersPane(endpoint) {
     parameterSection('Path parameters', endpoint.params.path, 'path'),
     parameterSection('Query parameters', endpoint.params.query, 'query'),
     parameterSection('Header parameters', endpoint.params.header, 'header'),
+    parameterSection('Cookie parameters', endpoint.params.cookie, 'cookie'),
   ].filter(Boolean);
   return groups.join('\n');
 }
@@ -122,56 +147,101 @@ ${rows}
 }
 
 function parameterRow(param, kind) {
-  const constraints = [];
-  if (param.schema.default !== undefined) {
-    constraints.push(`<span class="attr-constraint">Default: <code>${esc(JSON.stringify(param.schema.default))}</code></span>`);
-  }
-  for (const [key, label] of [
-    ['minimum', 'Min'],
-    ['maximum', 'Max'],
-    ['minLength', 'Min length'],
-    ['maxLength', 'Max length'],
-  ]) {
-    if (param.schema[key] !== undefined) {
-      constraints.push(`<span class="attr-constraint">${label}: <code>${esc(String(param.schema[key]))}</code></span>`);
-    }
-  }
   const anchorId = `${kind}-${slugify(param.name)}`;
+  const itemSchema = param.schema.type === 'array' ? param.schema.items ?? null : null;
+  const serialization =
+    kind === 'query' && param.schema.type === 'array' && (param.style || param.explode !== null)
+      ? `<span class="attr-constraint">Serialized: <code>${esc(serializationHint(param))}</code></span>`
+      : '';
+  const examples = param.examples.length > 1
+    ? `<div class="attr-constraints">${param.examples
+        .map((example) => `<span class="attr-constraint">${esc(example.summary)}: <code>${esc(JSON.stringify(example.value))}</code></span>`)
+        .join('\n        ')}</div>`
+    : '';
+  const constraints = constraintList(
+    param.examples.length > 1
+      ? { ...param.schema, example: undefined }
+      : param.schema.example === undefined && param.example !== undefined && typeof param.example !== 'object'
+      ? { ...param.schema, example: param.example }
+      : param.schema,
+    itemSchema,
+  );
   return `    <div class="attr-row" id="${anchorId}">
       <div class="attr-head">
         <a class="attr-anchor" href="#${anchorId}" aria-label="Link to ${esc(param.name)}" title="Copy link">#</a>
         <code class="attr-name">${esc(param.name)}</code>
-        <span class="attr-type">${esc(typeLabel(param.schema))}</span>
+        <span class="attr-type">${esc(typeLabel(param.schema, itemSchema))}</span>
         ${param.required ? '<span class="attr-required">required</span>' : ''}
+        ${param.schema.nullable ? '<span class="attr-nullable">nullable</span>' : ''}
         ${param.deprecated ? '<span class="attr-deprecated">deprecated</span>' : ''}
       </div>
-      ${descriptionHtml(param.description, 'attr-desc')}
-      ${constraints.length ? `<div class="attr-constraints">${constraints.join('\n        ')}</div>` : ''}
-      ${enumPills(param.schema)}
+      ${descriptionHtml(param.description || param.schema.description, 'attr-desc')}
+      ${constraints}
+      ${serialization ? `<div class="attr-constraints">${serialization}</div>` : ''}
+      ${examples}
+      ${enumPills(param.schema.enum ? param.schema : itemSchema)}
     </div>`;
+}
+
+function serializationHint(param) {
+  const explode = param.explode ?? (param.style ?? 'form') === 'form';
+  const style = param.style ?? 'form';
+  if (style === 'form') return explode ? `${param.name}=a&${param.name}=b` : `${param.name}=a,b`;
+  if (style === 'spaceDelimited') return `${param.name}=a%20b`;
+  if (style === 'pipeDelimited') return `${param.name}=a|b`;
+  if (style === 'deepObject') return `${param.name}[key]=value`;
+  return style;
 }
 
 function requestBodyPane(spec, requestBody) {
   if (!requestBody) return '';
-  const rows = attributeRows(spec, requestBody.schema);
-  const modelLink = requestBody.schemaName
-    ? ` · <a class="model-link" href="${esc(url(`/models/${slugify(requestBody.schemaName)}/`))}">${esc(requestBody.schemaName)}</a>`
-    : '';
+  const variants = requestBody.contents.map((content) => ({
+    label: content.contentType,
+    html: `${content.schemaName ? `<p class="doc-section-meta">Schema ${modelLink(content.schemaName)}</p>` : ''}
+  ${examplesPanel('Example request body', content, `body-${slugify(requestBody.contentType)}-${slugify(content.contentType)}`)}
+  ${content.schema ? schemaBody(spec, content.schema, { mode: 'request' }) : ''}`,
+  }));
   return `<section class="doc-section" id="body-parameters">
   <h2>Body parameters</h2>
   <p class="doc-section-meta"><code>${esc(requestBody.contentType)}</code>${
-    requestBody.required ? ' · required' : ' · optional'
-  }${modelLink}</p>
+    requestBody.contents.length > 1 ? ` <span class="doc-section-more">+${requestBody.contents.length - 1} more</span>` : ''
+  } · ${requestBody.required ? 'required' : 'optional'}</p>
   ${requestBody.description ? `<div class="endpoint-desc endpoint-desc--section">${mdBlock(requestBody.description)}</div>` : ''}
-  ${jsonPanel('Example request body', requestBody.example)}
-  ${rows ? `<div class="attr-list">\n${rows}\n  </div>` : ''}
+  ${contentTabs(variants)}
 </section>`;
+}
+
+let contentGroupCounter = 0;
+
+/** One media type renders as-is; several get CSS-only tabs, one per type. */
+function contentTabs(variants) {
+  if (variants.length === 0) return '';
+  if (variants.length === 1) return variants[0].html;
+  const group = `content-${(contentGroupCounter += 1)}`;
+  const inputs = variants
+    .map((variant, index) => `<input class="variant-radio" type="radio" name="${group}" id="${group}-${index}"${index === 0 ? ' checked' : ''}>`)
+    .join('');
+  const labels = variants
+    .map((variant, index) => `<label class="variant-tab variant-tab--mono" for="${group}-${index}">${esc(variant.label)}</label>`)
+    .join('\n    ');
+  const panes = variants.map((variant) => `<div class="variant-pane">\n${variant.html}\n  </div>`).join('\n  ');
+  return `<div class="variants variants--content">
+  ${inputs}
+  <div class="variant-tabbar" role="presentation">
+    ${labels}
+  </div>
+  ${panes}
+</div>`;
+}
+
+function modelLink(name) {
+  return `<a class="model-link" href="${esc(url(`/models/${slugify(name)}/`))}">${esc(name)}</a>`;
 }
 
 function responsesPane(spec, responses) {
   if (responses.length === 0) return '';
-  const success = responses.filter((response) => response.status.startsWith('2'));
-  const errors = responses.filter((response) => !response.status.startsWith('2'));
+  const success = responses.filter((response) => /^[123]/.test(response.status));
+  const errors = responses.filter((response) => !/^[123]/.test(response.status));
   return `<section class="doc-section">
 ${success.map((response) => responseCard(spec, response, true)).join('\n')}
 ${errors.length ? `  <h3 class="response-errors-title">Errors</h3>\n${errors.map((response) => responseCard(spec, response, false)).join('\n')}` : ''}
@@ -179,16 +249,18 @@ ${errors.length ? `  <h3 class="response-errors-title">Errors</h3>\n${errors.map
 }
 
 function responseCard(spec, response, open) {
-  // Expanded like model pages: the response shape is what the reader is here
-  // for, and the card itself already collapses when they want it out of sight.
-  const rows = response.schema ? attributeRows(spec, response.schema, { expanded: true }) : '';
-  const example = jsonPanel('Example response', response.example);
-  const modelLink = response.schemaName
-    ? `<a class="model-link" href="${esc(url(`/models/${slugify(response.schemaName)}/`))}">${esc(response.schemaName)}</a>`
-    : '';
+  const variants = response.contents.map((content) => ({
+    label: content.contentType,
+    html: `${content.schema ? schemaBody(spec, content.schema, { expanded: true, mode: 'response' }) : ''}
+      ${examplesPanel('Example response', content, `res-${slugify(response.status)}-${slugify(content.contentType)}`)}`,
+  }));
+  const headers = responseHeaders(response.headers);
+  const body = [headers, contentTabs(variants)].filter((part) => part && part.trim()).join('\n');
+  const link = response.schemaName ? modelLink(response.schemaName) : '';
+  const types = response.contents.length > 1 ? `<span class="response-types">${response.contents.length} formats</span>` : '';
   const head = `${statusBadge(response.status)}
-      <span class="response-desc">${mdInline(response.description)}</span>${modelLink}`;
-  if (!rows && !example) {
+      <span class="response-desc">${mdInline(response.description)}</span>${types}${link}`;
+  if (!body) {
     return `  <div class="response-card response-card--flat">
     <div class="response-head">
       ${head}
@@ -201,16 +273,94 @@ function responseCard(spec, response, open) {
       <svg class="response-chevron" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m9 18 6-6-6-6"/></svg>
     </summary>
     <div class="response-body">
-      ${rows ? `<div class="attr-list">\n${rows}\n      </div>` : ''}
-      ${example}
+      ${body}
     </div>
   </details>`;
 }
 
+function responseHeaders(headers) {
+  if (!headers?.length) return '';
+  const rows = headers
+    .map(
+      (header) => `      <div class="attr-row">
+        <div class="attr-head">
+          <code class="attr-name">${esc(header.name)}</code>
+          <span class="attr-type">${esc(typeLabel(header.schema))}</span>
+          ${header.required ? '<span class="attr-required">required</span>' : ''}
+          ${header.deprecated ? '<span class="attr-deprecated">deprecated</span>' : ''}
+        </div>
+        ${descriptionHtml(header.description, 'attr-desc')}
+        ${constraintList(header.example !== undefined ? { ...header.schema, example: header.example } : header.schema)}
+      </div>`,
+    )
+    .join('\n');
+  return `<div class="response-headers">
+      <p class="variants-intro">Headers</p>
+      <div class="attr-list">
+${rows}
+      </div>
+    </div>`;
+}
+
+/** Requests the API makes back to the client while handling this operation. */
+function callbacksPane(spec, callbacks) {
+  if (!callbacks?.length) return '';
+  const cards = callbacks
+    .map(({ name, expression, operation }) => {
+      const body = operation.requestBody?.contents?.[0];
+      return `  <details class="response-card callback-card">
+    <summary class="response-head">
+      ${methodBadge(operation.method)}
+      <span class="response-desc"><strong>${esc(name)}</strong> · ${esc(operation.title)}</span>
+      <svg class="response-chevron" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m9 18 6-6-6-6"/></svg>
+    </summary>
+    <div class="response-body">
+      <p class="doc-section-meta">Sent to <code>${esc(expression)}</code></p>
+      ${operation.description ? `<div class="endpoint-desc endpoint-desc--section">${mdBlock(operation.description)}</div>` : ''}
+      ${body ? examplesPanel('Callback payload', body, `cb-${slugify(name)}-${slugify(operation.id)}`) : ''}
+      ${body?.schema ? schemaBody(spec, body.schema, { mode: 'request' }) : ''}
+    </div>
+  </details>`;
+    })
+    .join('\n');
+  return `<section class="doc-section">
+  <h2>Callbacks</h2>
+  <p class="doc-section-meta">Requests the API sends to your server while processing this one.</p>
+${cards}
+</section>`;
+}
+
+/**
+ * Example(s) of one media type: a single block, or an example switcher
+ * (CSS-only tabs) when the spec names several. Non-JSON values (CSV, plain
+ * text) are shown as-is rather than as a JSON string literal.
+ */
+function examplesPanel(label, content, groupId) {
+  const examples = content.examples ?? [];
+  if (examples.length === 0) return '';
+  const isJson = /json/.test(content.contentType ?? '') || typeof examples[0].value === 'object';
+  const render = (value) =>
+    isJson || typeof value !== 'string' ? highlight(JSON.stringify(value, null, 2), 'json') : esc(value);
+  if (examples.length === 1) return jsonPanel(label, examples[0].value, render);
+  const tabs = examples.map((example, index) => ({
+    id: `${groupId}-ex-${index}`,
+    label: example.summary,
+    checked: index === 0,
+    code: render(example.value),
+  }));
+  return codePanel({
+    groupId: `${groupId}-ex`,
+    title: `<span class="code-panel-label">${esc(label)}</span>`,
+    tabs,
+    ariaLabel: label,
+    className: 'code-panel--inline',
+  });
+}
+
 /** Dark single-pane JSON block used inline in the content column. */
-function jsonPanel(label, value) {
+function jsonPanel(label, value, render = (v) => highlight(JSON.stringify(v, null, 2), 'json')) {
   if (value === null || value === undefined) return '';
-  const code = highlight(JSON.stringify(value, null, 2), 'json');
+  const code = render(value);
   return `<section class="code-panel code-panel--inline" aria-label="${esc(label)}">
   <header class="code-panel-head">
     <div class="code-panel-title"><span class="code-panel-label">${esc(label)}</span></div>
@@ -238,7 +388,7 @@ ${panels}
 }
 
 function pagerSection(model, endpoint) {
-  const siblings = model.endpoints.filter((other) => other.tag === endpoint.tag);
+  const siblings = endpoint.kind === 'webhook' ? model.webhooks : model.endpoints.filter((other) => other.tagName === endpoint.tagName);
   const index = siblings.findIndex((other) => other.id === endpoint.id);
   const previous = siblings[index - 1];
   const next = siblings[index + 1];

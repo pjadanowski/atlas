@@ -11,7 +11,7 @@ export function homeContent(model) {
   <p class="home-lede">Version ${esc(model.version)} · Every endpoint, schema and example — generated from the OpenAPI specification.</p>
 </header>
 <section class="doc-section home-intro">
-${mdBlock(model.descriptionHtml)}
+${mdBlock(model.descriptionHtml, { headingIds: true })}
 </section>
 ${authSection(model)}
 ${resourceIndex(model)}
@@ -32,6 +32,7 @@ function authSection(model) {
 
 function resourceIndex(model) {
   const groups = model.nav
+    .flatMap((section) => section.nodes)
     .map((node) => {
       const total = countEndpoints(node);
       const first = firstEndpoint(node);
@@ -44,7 +45,7 @@ function resourceIndex(model) {
         )
         .join('\n      ');
       return `    <div class="resource-card">
-      <a class="resource-name" href="${esc(url(first.href))}">${esc(node.name)}</a>
+      <a class="resource-name" href="${esc(url(node.description && node.href ? node.href : first.href))}">${esc(node.name)}</a>
       <p class="resource-count">${total} ${total === 1 ? 'endpoint' : 'endpoints'}</p>
       ${preview}
     </div>`;
@@ -65,4 +66,36 @@ function countEndpoints(node) {
 
 function firstEndpoint(node) {
   return node.endpoints[0] ?? node.children.map(firstEndpoint).find(Boolean) ?? null;
+}
+
+/** One tag: its description and every operation in it, Scalar-style overview. */
+export function tagContent(model, tag) {
+  const endpoints = model.endpoints.filter((endpoint) => endpoint.tagName === tag.name);
+  const rows = endpoints
+    .map(
+      (endpoint) => `    <a class="tag-endpoint${endpoint.deprecated ? ' is-deprecated' : ''}" href="${esc(url(endpoint.href))}">
+      ${methodBadge(endpoint.method)}
+      <code class="tag-endpoint-path">${esc(endpoint.path)}</code>
+      <span class="tag-endpoint-title">${esc(endpoint.title)}</span>
+    </a>`,
+    )
+    .join('\n');
+  return `<article class="home">
+<header class="endpoint-header">
+  <nav class="crumbs" aria-label="Breadcrumb">
+    <a href="${esc(url('/'))}">API</a>
+    <span class="crumbs-sep" aria-hidden="true">›</span>
+    <span aria-current="page">${esc(tag.displayName)}</span>
+  </nav>
+  <h1>${esc(tag.displayName)}</h1>
+  ${tag.description ? `<div class="endpoint-desc">${mdBlock(tag.description)}</div>` : ''}
+  ${tag.externalDocs?.url ? `<p class="endpoint-extdocs"><a href="${esc(tag.externalDocs.url)}" rel="noopener" target="_blank">${esc(tag.externalDocs.description ?? 'External documentation')} ↗</a></p>` : ''}
+</header>
+<section class="doc-section">
+  <h2>Endpoints</h2>
+  <div class="tag-endpoints">
+${rows}
+  </div>
+</section>
+</article>`;
 }

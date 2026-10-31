@@ -30,7 +30,7 @@ class MarkdownDescriptionTest extends TestCase
         $app['config']->set('app.key', 'base64:'.base64_encode(random_bytes(32)));
         $app['config']->set('scramble.renderer', 'atlas');
         $app['config']->set('atlas.output', $this->output);
-        $app['config']->set('scramble.info.description', "## Wichtig\n\nEin **fetter** Hinweis.");
+        $app['config']->set('scramble.info.description', "## Important\n\nA **bold** note.");
     }
 
     protected function defineRoutes($router): void
@@ -45,10 +45,10 @@ class MarkdownDescriptionTest extends TestCase
         $this->artisan('atlas:build --allow-spec-html')->assertSuccessful();
         $html = file_get_contents($this->output.'/index.html');
 
-        $this->assertStringContainsString('<strong>fetter</strong>', $html);
-        $this->assertStringContainsString('<h3 class="md-heading">Wichtig</h3>', $html);
+        $this->assertStringContainsString('<strong>bold</strong>', $html);
+        $this->assertStringContainsString('<h3 class="md-heading" id="intro-important">Important</h3>', $html);
         // The giveaway of a markdown description pushed through verbatim.
-        $this->assertStringNotContainsString('**fetter**', $html);
-        $this->assertStringNotContainsString('## Wichtig', $html);
+        $this->assertStringNotContainsString('**bold**', $html);
+        $this->assertStringNotContainsString('## Important', $html);
     }
 }

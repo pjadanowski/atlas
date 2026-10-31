@@ -3,8 +3,8 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "build": "node build/index.mjs --lang de --allow-spec-html",
-    "watch": "node --watch-path=openapi.json --watch-path=assets --watch-path=build build/index.mjs --lang de --allow-spec-html",
+    "build": "node build/index.mjs --spec examples/demo/openapi.json",
+    "watch": "node --watch-path=examples --watch-path=assets --watch-path=build build/index.mjs --spec examples/demo/openapi.json",
     "preview": "node build/serve.mjs"
   }
 }

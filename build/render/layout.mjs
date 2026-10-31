@@ -1,4 +1,4 @@
-import { esc } from '../text.mjs';
+import { esc, markdownHeadings } from '../text.mjs';
 import { url } from '../url.mjs';
 import { highlight } from '../highlight.mjs';
 import { mcpClientSnippets } from '../mcp.mjs';
@@ -86,29 +86,56 @@ ${assets.customJs ? `<script src="${esc(assets.customJs)}" defer></script>\n` : 
 function sidebar(model, activeHref) {
   const isHome = activeHref === '/';
   const isModels = activeHref.startsWith('/models/');
+  // Only the description's outermost heading level: a table of contents, not an outline.
+  const allHeadings = markdownHeadings(model.descriptionHtml);
+  const topLevel = Math.min(...allHeadings.map((heading) => heading.level));
+  const headings = allHeadings.filter((heading) => heading.level === topLevel);
+  const toc = headings.length
+    ? `\n      <div class="nav-toc">\n${headings
+        .map((heading) => `        <a class="nav-toc-link" href="${esc(url(`/#${heading.id}`))}">${esc(heading.text)}</a>`)
+        .join('\n')}\n      </div>`
+    : '';
   const intro = `    <div class="nav-static">
-      <a class="nav-page${isHome ? ' is-active' : ''}" href="${esc(url('/'))}"${isHome ? ' aria-current="page"' : ''}>Introduction</a>
-      <a class="nav-page" href="${esc(url('/#authentication'))}">Authentication</a>
-${model.models?.length ? `      <a class="nav-page${isModels ? ' is-active' : ''}" href="${esc(url('/models/'))}"${isModels ? ' aria-current="page"' : ''}>Models</a>\n` : ''}    </div>
-    <input class="nav-filter js-only" type="search" placeholder="Filter endpoints…" aria-label="Filter endpoints" data-nav-filter autocomplete="off" spellcheck="false">
-    <p class="nav-label" id="nav-ref-label">API Reference</p>`;
-  const groups = model.nav.map((node) => navGroup(node, activeHref)).join('\n');
-  return `${intro}\n    <div class="nav-tree" role="list" aria-labelledby="nav-ref-label">\n${groups}\n    </div>`;
+      <a class="nav-page${isHome ? ' is-active' : ''}" href="${esc(url('/'))}"${isHome ? ' aria-current="page"' : ''}>Introduction</a>${toc}
+${model.auth.length ? `      <a class="nav-page" href="${esc(url('/#authentication'))}">Authentication</a>\n` : ''}${model.models?.length ? `      <a class="nav-page${isModels ? ' is-active' : ''}" href="${esc(url('/models/'))}"${isModels ? ' aria-current="page"' : ''}>Models</a>\n` : ''}    </div>
+    <input class="nav-filter js-only" type="search" placeholder="Filter endpoints…" aria-label="Filter endpoints" data-nav-filter autocomplete="off" spellcheck="false">`;
+  const sections = model.nav
+    .map((section, index) => {
+      const labelId = `nav-section-${index}`;
+      const groups = section.nodes.map((node) => navGroup(node, activeHref)).join('\n');
+      return `    <p class="nav-label" id="${labelId}">${esc(section.name)}</p>
+    <div class="nav-tree" role="list" aria-labelledby="${labelId}">
+${groups}
+    </div>`;
+    })
+    .join('\n');
+  const webhooks = model.webhooks?.length
+    ? `
+    <p class="nav-label" id="nav-webhooks-label">Webhooks</p>
+    <div class="nav-tree" role="list" aria-labelledby="nav-webhooks-label">
+${model.webhooks.map((hook) => navLink(hook, activeHref, true)).join('\n')}
+    </div>`
+    : '';
+  return `${intro}\n${sections}${webhooks}`;
 }
 
 function navGroup(node, activeHref, nested = false) {
   const containsActive = groupContains(node, activeHref);
+  const isTagPage = node.href !== null && node.href === activeHref;
   const links = node.endpoints.map((endpoint) => navLink(endpoint, activeHref)).join('\n');
   const children = node.children
     .map((child) => navGroup(child, activeHref, true))
     .join('\n');
-  return `      <details class="nav-group${nested ? ' nav-group--nested' : ''}"${containsActive ? ' open' : ''}>
+  const overview = node.href
+    ? `          <a class="nav-overview${isTagPage ? ' is-active' : ''}" href="${esc(url(node.href))}"${isTagPage ? ' aria-current="page"' : ''}>Overview</a>\n`
+    : '';
+  return `      <details class="nav-group${nested ? ' nav-group--nested' : ''}"${containsActive || isTagPage ? ' open' : ''}>
         <summary>
           <svg class="nav-chevron" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m9 18 6-6-6-6"/></svg>
           <span>${esc(node.name)}</span>
         </summary>
         <div class="nav-group-body">
-${links}${children ? `\n${children}` : ''}
+${node.description ? overview : ''}${links}${children ? `\n${children}` : ''}
         </div>
       </details>`;
 }
@@ -120,10 +147,13 @@ function groupContains(node, activeHref) {
   );
 }
 
-function navLink(endpoint, activeHref) {
+function navLink(endpoint, activeHref, topLevel = false) {
   const isActive = endpoint.href === activeHref;
-  const tooltip = `${endpoint.method} ${endpoint.path} — ${endpoint.title}`;
-  return `          <a class="nav-endpoint${isActive ? ' is-active' : ''}" href="${esc(url(endpoint.href))}" title="${esc(tooltip)}"${isActive ? ' aria-current="page"' : ''}>
+  const tooltip = `${endpoint.method} ${endpoint.path} — ${endpoint.title}${endpoint.deprecated ? ' (deprecated)' : ''}`;
+  const classes = ['nav-endpoint', isActive ? 'is-active' : '', endpoint.deprecated ? 'is-deprecated' : '', topLevel ? 'nav-endpoint--top' : '']
+    .filter(Boolean)
+    .join(' ');
+  return `          <a class="${classes}" href="${esc(url(endpoint.href))}" title="${esc(tooltip)}"${isActive ? ' aria-current="page"' : ''}>
             ${methodBadge(endpoint.method)}
             <span class="nav-endpoint-title">${esc(endpoint.title)}</span>
           </a>`;
