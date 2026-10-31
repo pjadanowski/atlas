@@ -219,7 +219,10 @@ export function typeLabel(schema, item = null, refName = null) {
     if (refName) return refName;
     const extra = schema.additionalProperties;
     if (extra && typeof extra === 'object' && !schema.properties) {
-      return `map<string, ${typeLabel(extra.$ref ? {} : extra, null, extra.$ref?.split('/').pop() ?? null)}>`;
+      const valueRef = extra.$ref?.split('/').pop() ?? null;
+      const value = extra.$ref ? {} : extra;
+      const valueItem = value.type === 'array' && value.items && !value.items.$ref ? value.items : null;
+      return `map<string, ${typeLabel(value, valueItem, valueRef ?? value.items?.$ref?.split('/').pop() ?? null)}>`;
     }
     return 'object';
   }

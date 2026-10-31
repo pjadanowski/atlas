@@ -150,7 +150,7 @@ function normalizeParameter(spec, raw) {
     example: node.example ?? examples[0]?.value ?? schema.example ?? schema.default ?? schema.enum?.[0],
     // Always-available value for the try-it console: explicit example first,
     // otherwise generated from the schema (Swagger-style type placeholders).
-    sample: node.example ?? examples[0]?.value ?? exampleFromSchema(spec, node.schema ?? {}),
+    sample: node.example ?? examples[0]?.value ?? exampleFromSchema(spec, node.schema ?? {}, 0, new Set(), 'request', node.name),
   };
 }
 

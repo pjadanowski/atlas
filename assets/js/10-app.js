@@ -316,7 +316,7 @@
 
   // ---- Snippet language memory (pick PHP once → PHP everywhere) ----
   const LANG_KEY = 'pref:lang';
-  const LANG_IDS = ['curl', 'javascript', 'php', 'python'];
+  const LANG_IDS = ['curl', 'httpie', 'javascript', 'guzzle', 'laravel', 'php', 'python', 'httpx', 'go', 'ruby', 'java', 'csharp'];
 
   try {
     const lang = localStorage.getItem(LANG_KEY);

@@ -5,6 +5,11 @@
   "scripts": {
     "build": "node build/index.mjs --spec examples/demo/openapi.json",
     "watch": "node --watch-path=examples --watch-path=assets --watch-path=build build/index.mjs --spec examples/demo/openapi.json",
-    "preview": "node build/serve.mjs"
+    "preview": "node build/serve.mjs",
+    "test": "node --test tests/node/*.test.mjs",
+    "test:e2e": "npm run build && node --test tests/e2e/*.test.mjs"
+  },
+  "engines": {
+    "node": ">=20"
   }
 }

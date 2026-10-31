@@ -64,7 +64,7 @@ const LANG_RULES = {
   bash: {
     comment: /^#[^\n]*/,
     string: /^(?:"(?:[^"\\]|\\.)*"|'[^']*')/,
-    keyword: /^(?:curl|echo|export)\b/,
+    keyword: /^(?:curl|http|echo|printf|export)\b/,
     number: /^\d+(?:\.\d+)?\b/,
   },
   javascript: {
@@ -86,6 +86,33 @@ const LANG_RULES = {
     string: /^(?:"(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*')/,
     keyword:
       /^(?:import|from|def|return|if|else|elif|for|in|True|False|None|with|as|print|raise)\b/,
+    number: /^\d+(?:\.\d+)?\b/,
+  },
+  go: {
+    comment: /^\/\/[^\n]*/,
+    string: /^(?:"(?:[^"\\\n]|\\.)*"|`[^`]*`)/,
+    keyword:
+      /^(?:package|import|func|var|const|type|struct|return|if|else|for|range|defer|go|nil|true|false)\b/,
+    number: /^\d+(?:\.\d+)?\b/,
+  },
+  ruby: {
+    comment: /^#[^\n]*/,
+    string: /^(?:"(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*')/,
+    keyword: /^(?:require|do|end|def|if|else|elsif|unless|return|nil|true|false|puts)\b/,
+    number: /^\d+(?:\.\d+)?\b/,
+  },
+  java: {
+    comment: /^\/\/[^\n]*/,
+    string: /^(?:"""[\s\S]*?"""|"(?:[^"\\\n]|\\.)*")/,
+    keyword:
+      /^(?:import|package|public|private|static|final|class|void|new|return|if|else|throws|try|catch|var|null|true|false|String)\b/,
+    number: /^\d+(?:\.\d+)?\b/,
+  },
+  csharp: {
+    comment: /^\/\/[^\n]*/,
+    string: /^(?:("{3,})[\s\S]*?\1|@"(?:[^"]|"")*"|\$?"(?:[^"\\\n]|\\.)*")/,
+    keyword:
+      /^(?:using|var|new|await|async|return|if|else|null|true|false|string|int|class|public|static|void)\b/,
     number: /^\d+(?:\.\d+)?\b/,
   },
 };

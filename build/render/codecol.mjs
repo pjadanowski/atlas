@@ -1,6 +1,6 @@
 import { highlight } from '../highlight.mjs';
 import { buildSnippets, SNIPPET_LANGUAGES } from '../snippets.mjs';
-import { esc } from '../text.mjs';
+import { esc, slugify } from '../text.mjs';
 import { tryItLauncher } from './tryit.mjs';
 import { copyButton, expandButton, methodBadge, statusClass } from './ui.mjs';
 
@@ -15,31 +15,71 @@ export function endpointCodeColumn(model, endpoint) {
     .join('\n');
 }
 
+// The CSS-only tab system styles at most this many tabs per panel.
+const MAX_TABS = 14;
+
 export function requestPanel(model, endpoint, prefix = 'req') {
   const snippets = buildSnippets(endpoint, model.baseUrl);
   const groupId = `${prefix}-${endpoint.slug}`;
-  const tabs = SNIPPET_LANGUAGES.map((lang, index) => ({
+  // Hand-written x-codeSamples first. Their "-x-<n>" ids never end in a
+  // generated language id, so the remembered-language lookup ignores them.
+  const custom = (endpoint.codeSamples ?? []).map((sample, index) => ({
+    id: `${groupId}-x-${index}`,
+    label: sample.label,
+    code: highlight(sample.source, sampleLanguage(sample.lang)),
+  }));
+  const generated = SNIPPET_LANGUAGES.map((lang) => ({
     id: `${groupId}-${lang.id}`,
     label: lang.label,
-    checked: index === 0,
     code: highlight(snippets[lang.id], lang.language),
   }));
+  const tabs = [...custom, ...generated]
+    .slice(0, MAX_TABS)
+    .map((tab, index) => ({ ...tab, checked: index === 0 }));
   const title = `${methodBadge(endpoint.method)} <span class="code-panel-path">${esc(shortPath(endpoint.path))}</span>`;
   return codePanel({ groupId, title, tabs, ariaLabel: 'Request example' });
 }
 
+/** x-codeSamples `lang` → highlighter language; unknown ones render as plain text. */
+const SAMPLE_LANGUAGES = {
+  shell: 'bash', bash: 'bash', sh: 'bash', curl: 'bash', httpie: 'bash',
+  js: 'javascript', javascript: 'javascript', node: 'javascript', nodejs: 'javascript', typescript: 'javascript', ts: 'javascript',
+  php: 'php', laravel: 'php',
+  python: 'python', py: 'python',
+  go: 'go', golang: 'go',
+  ruby: 'ruby', rb: 'ruby',
+  java: 'java',
+  csharp: 'csharp', 'c#': 'csharp', cs: 'csharp',
+};
+
+function sampleLanguage(lang) {
+  return SAMPLE_LANGUAGES[String(lang).toLowerCase().replace(/[\s_]+/g, '')] ?? 'text';
+}
+
 export function responsePanel(endpoint, prefix = 'res') {
-  const withExamples = endpoint.responses.filter((response) => response.example !== null && response.example !== undefined);
-  if (withExamples.length === 0) return '';
+  // One tab per status, or per named example when a status has several
+  // ("200 · held", "200 · confirmed"). Primary media type only.
   const groupId = `${prefix}-${endpoint.slug}`;
-  const tabs = withExamples.slice(0, 5).map((response, index) => ({
-    id: `${groupId}-${response.status}`,
-    label: response.status,
-    labelClass: `tab-status tab-status--${statusClass(response.status)}`,
-    checked: index === 0,
-    code: highlight(JSON.stringify(response.example, null, 2), 'json'),
-  }));
-  return codePanel({ groupId, title: '<span class="code-panel-label">Response</span>', tabs, ariaLabel: 'Response example' });
+  const tabs = [];
+  for (const response of endpoint.responses) {
+    const content = response.contents?.[0];
+    const examples = content?.examples ?? [];
+    examples.forEach((example, index) => {
+      const value = example.value;
+      if (value === null || value === undefined) return;
+      const isJson = /json/.test(content.contentType ?? '') || typeof value === 'object';
+      tabs.push({
+        id: `${groupId}-${slugify(response.status)}${examples.length > 1 ? `-${index}` : ''}`,
+        label: examples.length > 1 ? `${response.status} · ${example.summary}` : response.status,
+        labelClass: `tab-status tab-status--${statusClass(response.status)}`,
+        code: isJson || typeof value !== 'string' ? highlight(JSON.stringify(value, null, 2), 'json') : esc(value),
+      });
+    });
+  }
+  if (tabs.length === 0) return '';
+  const shown = tabs.slice(0, 14);
+  shown[0].checked = true;
+  return codePanel({ groupId, title: '<span class="code-panel-label">Response</span>', tabs: shown, ariaLabel: 'Response example' });
 }
 
 export function codePanel({ groupId, title, tabs, ariaLabel, className = '' }) {

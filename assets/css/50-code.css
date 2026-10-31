@@ -61,6 +61,18 @@
   display: flex;
   gap: 2px;
   padding: 8px 10px 0;
+  /* Up to 14 snippet clients: scroll sideways rather than wrap. */
+  overflow-x: auto;
+  scrollbar-width: none;
+  mask-image: linear-gradient(to right, #000 calc(100% - 28px), transparent);
+}
+
+.code-tabbar::-webkit-scrollbar {
+  display: none;
+}
+
+.code-tab {
+  flex-shrink: 0;
 }
 
 .code-tab {
@@ -88,6 +100,7 @@
 }
 
 .code-pane pre {
+  tab-size: 4;
   padding: 14px 16px;
   overflow: auto;
   max-height: calc(18 * 1.55 * 12.5px);

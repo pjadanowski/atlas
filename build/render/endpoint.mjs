@@ -258,8 +258,11 @@ function responseCard(spec, response, open) {
   const body = [headers, contentTabs(variants)].filter((part) => part && part.trim()).join('\n');
   const link = response.schemaName ? modelLink(response.schemaName) : '';
   const types = response.contents.length > 1 ? `<span class="response-types">${response.contents.length} formats</span>` : '';
+  // Scramble describes responses by their schema ("`UserData`"); beside the
+  // model link that would say the same thing twice.
+  const redundant = response.schemaName && response.description.replace(/`/g, '').trim() === response.schemaName;
   const head = `${statusBadge(response.status)}
-      <span class="response-desc">${mdInline(response.description)}</span>${types}${link}`;
+      <span class="response-desc">${redundant ? '' : mdInline(response.description)}</span>${types}${link}`;
   if (!body) {
     return `  <div class="response-card response-card--flat">
     <div class="response-head">
