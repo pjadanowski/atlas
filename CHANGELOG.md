@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.3.0 — 2026-10-31
 
 ### Added
 - WS-Security for SOAP services: requirements read from WS-SecurityPolicy
