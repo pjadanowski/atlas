@@ -25,6 +25,8 @@
 - Orbit Travel demo spec; node, browser (CDP) and Laravel test suites; CI.
 
 ### Changed
+- Requires Laravel 12 or 13: every Laravel 11 release is now flagged by
+  security advisories and Composer refuses to install it.
 - Security labels, snippets and the home page describe the spec's actual
   schemes instead of assuming a bearer token.
 - Untagged operations are grouped under "Other".

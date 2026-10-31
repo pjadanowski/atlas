@@ -14,8 +14,8 @@ jobs:
       matrix:
         node: [20, 22, 24]
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
         with:
           node-version: ${{ matrix.node }}
       - name: Build the demo site
@@ -32,15 +32,13 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - { php: '8.2', laravel: '11.*', testbench: '9.*' }
-          - { php: '8.3', laravel: '11.*', testbench: '9.*' }
           - { php: '8.2', laravel: '12.*', testbench: '10.*' }
           - { php: '8.4', laravel: '12.*', testbench: '10.*' }
           - { php: '8.3', laravel: '13.*', testbench: '11.*' }
           - { php: '8.4', laravel: '13.*', testbench: '11.*' }
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
         with:
           node-version: 22
       - uses: shivammathur/setup-php@v2

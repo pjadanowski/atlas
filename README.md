@@ -65,7 +65,7 @@ changes. For production, build on deploy:
 php artisan atlas:build
 ```
 
-Requires PHP 8.2+, Laravel 11, 12 or 13, Scramble ^0.13 and a `node` binary
+Requires PHP 8.2+, Laravel 12 or 13, Scramble ^0.13 and a `node` binary
 (20+) on the machine that builds the docs — nothing to `npm install`.
 
 ### How it fits into Scramble

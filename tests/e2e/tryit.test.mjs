@@ -84,8 +84,13 @@ after(async () => {
   }
   docs?.kill();
   api?.close();
-  // Chrome's helpers may still be flushing the profile for a moment.
-  if (profile) rmSync(profile, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 });
+  // Chrome's helpers may still be flushing the profile for a moment; a
+  // leftover temp dir must not fail the suite.
+  try {
+    if (profile) rmSync(profile, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 });
+  } catch {
+    /* ignore */
+  }
 });
 
 function connect(url) {
@@ -151,8 +156,9 @@ async function sendTryIt(path, { auth, server }) {
       const tick = () => test() ? resolve() : Date.now() - started > 5000 ? reject(new Error('timeout')) : setTimeout(tick, 50);
       tick();
     });
-    await wait(() => window.atlasTryitReady || document.querySelector('[data-tryit] .tryit-form'));
-    await new Promise((r) => setTimeout(r, 300));
+    // The runtime is lazy-loaded on first open; submitting before it is in
+    // place would fall through to a native form submit.
+    await wait(() => window.__tryitReady === true);
     const panel = document.querySelector('[data-tryit]');
     panel.querySelector('[data-tryit-fill]')?.click();
     panel.querySelector('.tryit-form').requestSubmit();
@@ -204,7 +210,10 @@ test('server variables are substituted into the base URL', { skip }, async () =>
   await open('/stations/liststations/');
   const url = await evaluate(`(async () => {
     document.querySelector('[data-tryit-open]').click();
-    await new Promise((r) => setTimeout(r, 600));
+    await new Promise((resolve) => {
+      const tick = () => (window.__tryitReady === true ? resolve() : setTimeout(tick, 50));
+      tick();
+    });
     const panel = document.querySelector('[data-tryit]');
     const select = panel.querySelector('[data-server-select]');
     const templated = [...select.options].find((option) => option.dataset.template);
